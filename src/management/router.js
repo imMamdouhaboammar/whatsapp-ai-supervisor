@@ -22,13 +22,13 @@ async function readJson(req, limit = 128_000) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
-function authorized(req, token, url = null) {
+function authorized(req, token) {
   if (!token) return true;
-  const authHeader = String(req.headers.authorization ?? '');
-  const queryToken = url?.searchParams?.get('token') ? `Bearer ${url.searchParams.get('token')}` : '';
-  const candidate = authHeader || queryToken;
+  const candidate = String(req.headers.authorization ?? '');
+  const expectedValue = `Bearer ${token}`;
   const actual = Buffer.from(candidate);
-  const expected = Buffer.from(`Bearer ${token}`);
+  const expected = Buffer.from(expectedValue);
+  if (!candidate.startsWith('Bearer ')) return false;
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
