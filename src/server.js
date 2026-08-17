@@ -47,28 +47,25 @@ function senderForTenant(tenant) {
 function buildModelProviders(tenant) {
   const providers = {};
 
-  // 1. OpenAI
   try {
     const openaiApiKey = resolveTenantSecret(tenant.ai ?? {}, 'apiKeyEnv', 'OPENAI_API_KEY');
     providers.openai = new OpenAIProvider({ apiKey: openaiApiKey });
   } catch {}
 
-  // 2. Tabitoken / Anthropic (Claude Opus / Thinking models)
   const tabitokenKeys = process.env.TABITOKEN_API_KEYS || process.env.TABITOKEN_API_KEY || null;
   if (tabitokenKeys) {
     const anthropic = new AnthropicProvider({
-      apiKeys: tabitokenKeys.split(',').map((k) => k.trim()).filter(Boolean),
+      apiKeys: tabitokenKeys.split(',').map((key) => key.trim()).filter(Boolean),
       baseUrl: process.env.TABITOKEN_BASE_URL || 'https://tabitoken.com/v1'
     });
     providers.tabitoken = anthropic;
     providers.anthropic = anthropic;
   }
 
-  // 3. AgentRouter (GPT-5.6-Sol)
   const agentrouterKeys = process.env.AGENTROUTER_API_KEYS || process.env.AGENTROUTER_API_KEY || null;
   if (agentrouterKeys) {
     providers.agentrouter = new AgentRouterProvider({
-      apiKeys: agentrouterKeys.split(',').map((k) => k.trim()).filter(Boolean),
+      apiKeys: agentrouterKeys.split(',').map((key) => key.trim()).filter(Boolean),
       baseUrl: process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1'
     });
   }
@@ -83,7 +80,6 @@ function orchestratorForTenant(tenant) {
   const modelGateway = new ModelGateway({
     providers: buildModelProviders(tenant)
   });
-
   const orchestrator = new SupervisorOrchestrator({
     modelGateway,
     channelSender: senderForTenant(tenant),
@@ -95,9 +91,14 @@ function orchestratorForTenant(tenant) {
   return orchestrator;
 }
 
+function invalidateTenantRuntime(tenantId) {
+  runtimes.delete(tenantId);
+  manualSenders.delete(tenantId);
+}
+
 const readiness = () => collectReadiness({
   dataDir: config.dataDir,
-  tenantCount: config.tenants.length,
+  tenantCount: tenantStore.list().length,
   browserRuntime,
   browserRequired: config.browser.required
 });
@@ -124,8 +125,9 @@ const managementRouter = createManagementRouter({
   readiness,
   linkedDeviceStatus,
   manualSend: (tenant, message) => senderForTenant(tenant).sendText(message),
-  onTenantChanged: (tenantId) => { runtimes.delete(tenantId); manualSenders.delete(tenantId); },
-  moderatorEngine, sseBroadcaster,
+  onTenantChanged: invalidateTenantRuntime,
+  moderatorEngine,
+  sseBroadcaster,
   runtimeSummary: () => ({
     service: 'whatsapp-ai-supervisor',
     ui: 'material3-operator',
@@ -143,7 +145,8 @@ const managementRouter = createManagementRouter({
 const server = createHttpServer({
   verifyToken: config.meta.verifyToken,
   appSecret: config.meta.appSecret,
-  linkedDeviceIngressToken: config.linkedDevice.ingressToken, managementToken: config.management.token,
+  linkedDeviceIngressToken: config.linkedDevice.ingressToken,
+  managementToken: config.management.token,
   tenantStore,
   orchestratorForTenant,
   auditStore,
