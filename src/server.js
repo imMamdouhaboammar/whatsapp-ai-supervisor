@@ -14,6 +14,7 @@ import { createWhatsAppSender } from './channels/whatsapp-sender-factory.js';
 import { createBrowserRuntime } from './browser/runtime-factory.js';
 import { ActionGateway } from './actions/action-gateway.js';
 import { collectReadiness } from './runtime/readiness.js';
+import { TenantRuntimeCache } from './runtime/tenant-runtime-cache.js';
 import { createManagementRouter } from './management/router.js';
 import { createLinkedDeviceStatusProvider } from './management/linked-device-status.js';
 import { AutonomousModeratorEngine } from './ai/moderator-engine.js';
@@ -28,20 +29,15 @@ const claimStore = new FileClaimStore({ dataDir: config.dataDir });
 const conversationStore = new FileConversationStore({ dataDir: config.dataDir });
 const browserRuntime = createBrowserRuntime(config.browser);
 const actionGateway = browserRuntime ? new ActionGateway({ browserRuntime }) : null;
-const runtimes = new Map();
-const manualSenders = new Map();
+const runtimeCache = new TenantRuntimeCache();
 
 function senderForTenant(tenant) {
-  const cached = manualSenders.get(tenant.id);
-  if (cached) return cached;
-  const sender = createWhatsAppSender({
+  return runtimeCache.senderFor(tenant.id, () => createWhatsAppSender({
     tenant,
     metaGraphVersion: config.meta.graphVersion,
     resolveSecret: resolveTenantSecret,
     linkedDeviceWorkerUrlOverride: config.linkedDevice.workerUrlOverride
-  });
-  manualSenders.set(tenant.id, sender);
-  return sender;
+  }));
 }
 
 function buildModelProviders(tenant) {
@@ -74,26 +70,18 @@ function buildModelProviders(tenant) {
 }
 
 function orchestratorForTenant(tenant) {
-  const cached = runtimes.get(tenant.id);
-  if (cached) return cached;
-
-  const modelGateway = new ModelGateway({
-    providers: buildModelProviders(tenant)
+  return runtimeCache.runtimeFor(tenant.id, () => {
+    const modelGateway = new ModelGateway({
+      providers: buildModelProviders(tenant)
+    });
+    return new SupervisorOrchestrator({
+      modelGateway,
+      channelSender: senderForTenant(tenant),
+      auditStore,
+      actionGateway,
+      conversationStore
+    });
   });
-  const orchestrator = new SupervisorOrchestrator({
-    modelGateway,
-    channelSender: senderForTenant(tenant),
-    auditStore,
-    actionGateway,
-    conversationStore
-  });
-  runtimes.set(tenant.id, orchestrator);
-  return orchestrator;
-}
-
-function invalidateTenantRuntime(tenantId) {
-  runtimes.delete(tenantId);
-  manualSenders.delete(tenantId);
 }
 
 const readiness = () => collectReadiness({
@@ -125,7 +113,7 @@ const managementRouter = createManagementRouter({
   readiness,
   linkedDeviceStatus,
   manualSend: (tenant, message) => senderForTenant(tenant).sendText(message),
-  onTenantChanged: invalidateTenantRuntime,
+  onTenantChanged: (tenantId) => runtimeCache.invalidate(tenantId),
   moderatorEngine,
   sseBroadcaster,
   runtimeSummary: () => ({
