@@ -35,3 +35,12 @@ test('conversation control persists and manual replies are recorded', () => {
     assert.equal(restarted.list('acme')[0].messages[0].direction, 'human');
   } finally { cleanup(); }
 });
+
+test('manual reply does not replace a known customer name with the customer id', () => {
+  const { store, cleanup } = fixture();
+  try {
+    store.recordInbound({ id: 'm2', tenantId: 'acme', customerId: '20100', customerName: 'Nora', text: 'Hello', timestamp: 1_700_000_000 });
+    store.recordManualOutbound({ tenantId: 'acme', customerId: '20100', text: 'Hi Nora' });
+    assert.equal(store.list('acme')[0].customerName, 'Nora');
+  } finally { cleanup(); }
+});

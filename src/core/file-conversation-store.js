@@ -162,7 +162,9 @@ export class FileConversationStore {
         };
         threads.set(customerId, thread);
       }
-      thread.customerName = event.customerName || thread.customerName;
+      if (event.customerName && (event.customerName !== customerId || thread.customerName === customerId)) {
+        thread.customerName = event.customerName;
+      }
       thread.lastActivityAt = event.at || thread.lastActivityAt;
       if (event.text) thread.preview = event.text;
       thread.messages.push(event);
