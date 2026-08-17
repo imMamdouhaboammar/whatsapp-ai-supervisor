@@ -68,15 +68,15 @@ export function loadConfig() {
         appSecret: process.env.META_APP_SECRET ?? null,
         graphVersion: process.env.META_GRAPH_VERSION ?? null
       };
+  const host = process.env.HOST ?? '127.0.0.1';
+  const managementToken = process.env.MANAGEMENT_TOKEN || null;
+  if (!['127.0.0.1', '::1', 'localhost'].includes(host) && !managementToken) throw new Error('MANAGEMENT_TOKEN is required for external host binding');
 
   return {
-    port: Number(process.env.PORT ?? 3000),
-    host: process.env.HOST ?? '127.0.0.1',
+    port: Number(process.env.PORT ?? 3000), host,
     dataDir: resolve(process.env.DATA_DIR ?? './data'),
     uiDir: resolve(process.env.UI_DIR ?? './ui/dist'),
-    management: {
-      token: process.env.MANAGEMENT_TOKEN || null
-    },
+    management: { token: managementToken },
     meta,
     linkedDevice: {
       enabled: hasLinkedDeviceTenants,
