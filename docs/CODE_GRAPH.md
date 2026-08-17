@@ -312,7 +312,7 @@ None.
 | `src/ai/anthropic-provider.js` | ai | 162 | 2 | 1 | `AnthropicProvider` | `anthropic-provider.test.js` |
 | `src/ai/model-gateway.js` | ai | 61 | 0 | 1 | `ModelGateway` | `model-gateway.test.js` |
 | `src/ai/model-provider.js` | ai | 13 | 0 | 3 | `ModelProvider` | — |
-| `src/ai/moderator-engine.js` | ai | 223 | 0 | 1 | `AutonomousModeratorEngine` | `moderator-engine.test.js` |
+| `src/ai/moderator-engine.js` | ai | 215 | 0 | 1 | `AutonomousModeratorEngine` | `moderator-engine.test.js` |
 | `src/ai/openai-provider.js` | ai | 89 | 1 | 1 | `OpenAIProvider` | `openai-provider.test.js` |
 | `src/ai/thinking-parser.js` | ai | 63 | 0 | 2 | `extractThinkingAndCleanText`, `parseDecisionJson`, `validateDecision` | `thinking-parser.test.js` |
 | `src/app.js` | http | 232 | 3 | 1 | `createHttpServer` | `app.test.js` |
@@ -344,7 +344,7 @@ None.
 | `src/runtime/init-local.js` | runtime | 42 | 0 | 1 | `initializeLocalWorkspace` | `runtime-cli.test.js` |
 | `src/runtime/readiness.js` | runtime | 64 | 0 | 1 | `probeDataDirectory`, `collectReadiness` | `readiness.test.js` |
 | `src/runtime/tenant-runtime-cache.js` | runtime | 28 | 0 | 1 | `TenantRuntimeCache` | `tenant-runtime-cache.test.js` |
-| `src/server.js` | entry | 154 | 20 | 1 | — | — |
+| `src/server.js` | entry | 152 | 20 | 1 | — | — |
 | `ui/src/api/client.ts` | ui | 89 | 1 | 11 | `managementToken`, `setManagementToken`, `api` | — |
 | `ui/src/api/types.ts` | ui | 146 | 0 | 10 | `TransportMode`, `ConversationControl`, `WhatsAppNumber`, `Tenant`, `TenantCreatePayload`, `TenantUpdatePayload`, `WhatsAppSession`, `AuditEvent`, `ConversationMessage`, `Conversation`, `Overview`, `ActionEvent`, `RuntimeInfo` | — |
 | `ui/src/app/App.tsx` | ui | 88 | 12 | 1 | `App` | — |
@@ -357,7 +357,7 @@ None.
 | `ui/src/components/Status.tsx` | ui | 9 | 0 | 7 | `Status` | — |
 | `ui/src/components/TenantFormModal.tsx` | ui | 169 | 2 | 1 | `TenantFormModal` | — |
 | `ui/src/components/WhatsAppNumbersPanel.tsx` | ui | 199 | 3 | 1 | `WhatsAppNumbersPanel` | — |
-| `ui/src/hooks/useRealtime.ts` | ui | 134 | 1 | 1 | `RealtimeEvent`, `connectRealtime`, `runRealtimeLoop`, `useRealtime` | `use-realtime-ui.test.ts` |
+| `ui/src/hooks/useRealtime.ts` | ui | 144 | 1 | 1 | `RealtimeEvent`, `waitForRetry`, `connectRealtime`, `runRealtimeLoop`, `useRealtime` | `use-realtime-ui.test.ts` |
 | `ui/src/main.tsx` | ui | 15 | 1 | 0 | — | — |
 | `ui/src/pages/ActionsPage.tsx` | ui | 19 | 5 | 1 | `ActionsPage` | — |
 | `ui/src/pages/AuditPage.tsx` | ui | 22 | 5 | 1 | `AuditPage` | — |

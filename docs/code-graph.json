@@ -108,7 +108,7 @@
     {
       "id": "src/ai/moderator-engine.js",
       "group": "ai",
-      "lines": 223,
+      "lines": 215,
       "exports": [
         {
           "kind": "class",
@@ -861,7 +861,7 @@
     {
       "id": "src/server.js",
       "group": "entry",
-      "lines": 154,
+      "lines": 152,
       "exports": [],
       "imports": [
         "src/actions/action-gateway.js",
@@ -1356,11 +1356,15 @@
     {
       "id": "ui/src/hooks/useRealtime.ts",
       "group": "ui",
-      "lines": 134,
+      "lines": 144,
       "exports": [
         {
           "kind": "interface",
           "name": "RealtimeEvent"
+        },
+        {
+          "kind": "function",
+          "name": "waitForRetry"
         },
         {
           "kind": "function",
