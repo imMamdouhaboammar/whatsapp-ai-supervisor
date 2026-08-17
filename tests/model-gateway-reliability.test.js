@@ -43,6 +43,21 @@ test('gateway enforces one end-to-end deadline even when provider ignores AbortS
   assert.ok(slow.calls[0].signal instanceof AbortSignal);
 });
 
+test('deadline releases concurrency capacity even when timed-out provider never settles', async () => {
+  const never = new Provider(async () => new Promise(() => {}));
+  const fast = new Provider(async () => ({ intent: 'faq', confidence: 0.9, reply: 'ok', requestedAction: 'reply' }));
+  const gateway = new ModelGateway({ providers: { never, fast }, deadlineMs: 25, maxConcurrent: 1, maxRetriesPerCandidate: 0 });
+
+  await assert.rejects(
+    gateway.decide({ text: 'hang' }, route({ provider: 'never', model: 'a' })),
+    (error) => error.code === 'deadline_exceeded'
+  );
+
+  const result = await gateway.decide({ text: 'next' }, route({ provider: 'fast', model: 'b' }));
+  assert.equal(result.reply, 'ok');
+  assert.equal(fast.calls.length, 1);
+});
+
 test('gateway bounds candidate attempts and does not retry non-retryable provider errors', async () => {
   const auth = new Provider(async () => { throw Object.assign(new Error('raw secret'), { status: 401 }); });
   const unavailable = new Provider(async () => { throw Object.assign(new Error('raw stack'), { status: 503 }); });
