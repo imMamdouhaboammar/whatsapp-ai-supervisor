@@ -32,14 +32,15 @@ function deps() {
     findByLinkedDeviceSessionId(id) { return id === 'demo-session' ? tenant : null; }
   };
   const orchestratorForTenant = () => ({
-    async handle(message, currentTenant) {
+    async handle(message, currentTenant, options = {}) {
+      const action = options.executionMode === 'simulation' ? 'simulation' : (currentTenant.shadowMode ? 'shadow' : 'reply');
       const event = {
         id: 'audit-1', tenantId: currentTenant.id, messageId: message.id, customerId: message.customerId,
         channel: message.channel, at: new Date(0).toISOString(), model: { intent: 'faq' },
-        permission: { action: 'reply' }, result: { action: 'shadow' }
+        permission: { action: 'reply' }, result: { action }
       };
       auditStore.append(event);
-      return { action: currentTenant.shadowMode ? 'shadow' : 'reply', wouldAction: 'reply' };
+      return { action, wouldAction: 'reply' };
     }
   });
   return { verifyToken: 'verify-me', appSecret: null, tenantStore, orchestratorForTenant, auditStore, linkedDeviceIngressToken: 'ingress-secret' };
@@ -61,7 +62,7 @@ test('GET /webhooks/whatsapp returns Meta verification challenge', async () => {
   });
 });
 
-test('POST /v1/simulate is dry-run by default and returns shadow result', async () => {
+test('POST /v1/simulate uses explicit simulation mode', async () => {
   await withServer(deps(), async (base) => {
     const response = await fetch(`${base}/v1/simulate`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -70,7 +71,8 @@ test('POST /v1/simulate is dry-run by default and returns shadow result', async 
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.dryRun, true);
-    assert.equal(body.result.action, 'shadow');
+    assert.equal(body.result.action, 'simulation');
+    assert.equal(body.result.wouldAction, 'reply');
   });
 });
 
