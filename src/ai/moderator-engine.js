@@ -9,17 +9,13 @@ export class AutonomousModeratorEngine {
   constructor({
     tenantStore,
     conversationStore,
-    auditStore,
     orchestratorForTenant,
-    channelSenderForTenant,
     logger = console,
     now = () => new Date().toISOString()
   }) {
     this.tenantStore = tenantStore;
     this.conversationStore = conversationStore;
-    this.auditStore = auditStore;
     this.orchestratorForTenant = orchestratorForTenant;
-    this.channelSenderForTenant = channelSenderForTenant;
     this.logger = logger;
     this.now = now;
   }
@@ -45,7 +41,6 @@ export class AutonomousModeratorEngine {
     for (const thread of threads) {
       report.scannedThreads += 1;
 
-      // If thread is under human control and not forced, skip
       if (thread.control === 'human' && !forceAll) {
         report.skipped += 1;
         report.results.push({
@@ -66,7 +61,6 @@ export class AutonomousModeratorEngine {
       const lastMessage = messages[messages.length - 1];
       const isUnansweredInbound = lastMessage.direction === 'inbound';
 
-      // 1. Unanswered Inbound Customer Message
       if (isUnansweredInbound) {
         try {
           const inboundMessage = {
@@ -77,16 +71,15 @@ export class AutonomousModeratorEngine {
             channel: 'whatsapp',
             text: lastMessage.text ?? '',
             timestamp: Math.floor(new Date(lastMessage.at || Date.now()).getTime() / 1000),
-            context: messages.slice(-6).map((m) => ({
-              direction: m.direction === 'inbound' ? 'user' : 'assistant',
-              text: m.text,
-              at: m.at
+            context: messages.slice(-6).map((message) => ({
+              direction: message.direction === 'inbound' ? 'user' : 'assistant',
+              text: message.text,
+              at: message.at
             }))
           };
 
           const result = await orchestrator.handle(inboundMessage, tenant, { executionMode });
 
-          // If not dry run and action is reply, ensure it's recorded and sent
           if (!dryRun && result.action === 'reply' && result.model?.reply?.trim()) {
             this.conversationStore.recordDecision(inboundMessage, result);
             report.repliesSent += 1;
@@ -98,7 +91,8 @@ export class AutonomousModeratorEngine {
             customerId: thread.customerId,
             customerName: thread.customerName,
             type: 'inbound_resolution',
-            action: result.action, wouldAction: result.wouldAction ?? null,
+            action: result.action,
+            wouldAction: result.wouldAction ?? null,
             reply: result.model?.reply ?? null,
             thinking: result.model?.thinking ?? null,
             proactiveOffer: result.model?.proactiveOffer ?? null,
@@ -117,29 +111,27 @@ export class AutonomousModeratorEngine {
         continue;
       }
 
-      // 2. Stalled Conversation / Proactive Follow-up Opportunity
-      // If last message was assistant or decision and customer didn't reply for some time
       if (!isUnansweredInbound && report.followupsSent < proactiveLimit) {
         try {
           const lastAssistantText = lastMessage.text || '';
-          const subagentPrompt = {
+          const proactiveMessage = {
             id: `proactive_${crypto.randomUUID().slice(0, 8)}`,
             tenantId,
             customerId: thread.customerId,
             customerName: thread.customerName,
             channel: 'whatsapp',
-            text: `[SYSTEM_MODERATOR_PROACTIVE_EVALUATION]: The customer previously talked to us. Last message was: \"${lastAssistantText}\". Evaluate if a proactive check-in, gentle follow-up, or helpful assistance is beneficial. If so, draft a natural, warm follow-up in customer's language. If no follow-up is needed, set requestedAction to \"ignore\".`,
-            context: messages.slice(-6).map((m) => ({
-              direction: m.direction === 'inbound' ? 'user' : 'assistant',
-              text: m.text,
-              at: m.at
+            text: `[SYSTEM_MODERATOR_PROACTIVE_EVALUATION]: The customer previously talked to us. Last message was: "${lastAssistantText}". Evaluate if a proactive check-in, gentle follow-up, or helpful assistance is beneficial. If so, draft a natural, warm follow-up in customer's language. If no follow-up is needed, set requestedAction to "ignore".`,
+            context: messages.slice(-6).map((message) => ({
+              direction: message.direction === 'inbound' ? 'user' : 'assistant',
+              text: message.text,
+              at: message.at
             }))
           };
 
-          const result = await orchestrator.handle(subagentPrompt, tenant, { executionMode });
+          const result = await orchestrator.handle(proactiveMessage, tenant, { executionMode });
 
           if (result.action === 'reply' && result.model?.reply?.trim()) {
-            this.conversationStore.recordDecision(subagentPrompt, result);
+            this.conversationStore.recordDecision(proactiveMessage, result);
             report.followupsSent += 1;
             report.results.push({
               customerId: thread.customerId,
@@ -212,10 +204,10 @@ export class AutonomousModeratorEngine {
       timestamp: this.now(),
       dryRun,
       tenantsProcessed: summaries.length,
-      totalThreads: summaries.reduce((acc, s) => acc + s.totalThreads, 0),
-      totalRepliesSent: summaries.reduce((acc, s) => acc + s.repliesSent, 0),
-      totalFollowupsSent: summaries.reduce((acc, s) => acc + s.followupsSent, 0),
-      totalHumanHandoffs: summaries.reduce((acc, s) => acc + s.humanHandoffs, 0),
+      totalThreads: summaries.reduce((total, summary) => total + summary.totalThreads, 0),
+      totalRepliesSent: summaries.reduce((total, summary) => total + summary.repliesSent, 0),
+      totalFollowupsSent: summaries.reduce((total, summary) => total + summary.followupsSent, 0),
+      totalHumanHandoffs: summaries.reduce((total, summary) => total + summary.humanHandoffs, 0),
       summaries
     };
   }
