@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 65,
-  "edgeCount": 112,
+  "moduleCount": 66,
+  "edgeCount": 113,
   "cycles": [],
   "nodes": [
     {
@@ -176,7 +176,7 @@
     {
       "id": "src/app.js",
       "group": "http",
-      "lines": 232,
+      "lines": 258,
       "exports": [
         {
           "kind": "function",
@@ -186,6 +186,7 @@
       "imports": [
         "src/channels/whatsapp-cloud.js",
         "src/channels/whatsapp-linked-device.js",
+        "src/domain/domain-event.js",
         "src/management/static-ui.js"
       ],
       "importedBy": [
@@ -196,6 +197,9 @@
         "node:http"
       ],
       "tests": [
+        "tests/app-decision-events.test.js",
+        "tests/app-domain-events.test.js",
+        "tests/app-realtime-domain-events.test.js",
         "tests/app.test.js"
       ]
     },
@@ -539,7 +543,7 @@
     {
       "id": "src/core/file-conversation-store.js",
       "group": "decision",
-      "lines": 181,
+      "lines": 204,
       "exports": [
         {
           "kind": "class",
@@ -551,7 +555,6 @@
         "src/server.js"
       ],
       "external": [
-        "node:crypto",
         "node:fs",
         "node:path"
       ],
@@ -603,6 +606,48 @@
       "tests": [
         "tests/tenant-store-crud.test.js",
         "tests/tenant-store-linked-device.test.js"
+      ]
+    },
+    {
+      "id": "src/domain/domain-event.js",
+      "group": "decision",
+      "lines": 136,
+      "exports": [
+        {
+          "kind": "const",
+          "name": "DOMAIN_EVENT_SCHEMA_VERSION"
+        },
+        {
+          "kind": "const",
+          "name": "DOMAIN_ACTOR_TYPES"
+        },
+        {
+          "kind": "const",
+          "name": "DOMAIN_EVENT_TYPES"
+        },
+        {
+          "kind": "function",
+          "name": "assertDomainEvent"
+        },
+        {
+          "kind": "function",
+          "name": "createDomainEvent"
+        },
+        {
+          "kind": "function",
+          "name": "deriveDomainEvent"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/app.js"
+      ],
+      "external": [
+        "node:crypto"
+      ],
+      "tests": [
+        "tests/domain-event.test.js",
+        "tests/realtime-domain-events.test.js"
       ]
     },
     {
@@ -760,6 +805,7 @@
       ],
       "external": [],
       "tests": [
+        "tests/realtime-domain-events.test.js",
         "tests/sse-broadcaster.test.js"
       ]
     },
@@ -1624,6 +1670,10 @@
     {
       "from": "src/app.js",
       "to": "src/channels/whatsapp-linked-device.js"
+    },
+    {
+      "from": "src/app.js",
+      "to": "src/domain/domain-event.js"
     },
     {
       "from": "src/app.js",

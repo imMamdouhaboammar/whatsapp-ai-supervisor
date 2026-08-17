@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { normalizeWhatsAppWebhook, validateMetaSignature, verifyWebhookChallenge } from './channels/whatsapp-cloud.js';
 import { normalizeLinkedDeviceInbound } from './channels/whatsapp-linked-device.js';
+import { createDomainEvent } from './domain/domain-event.js';
 import { serveStaticUi } from './management/static-ui.js';
 
 function sendJson(res, status, body) {
@@ -30,6 +31,30 @@ function bearerMatches(req, expectedToken) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function conversationIdFor(message) {
+  const channel = String(message.channel ?? '').trim();
+  const customerId = String(message.customerId ?? '').trim();
+  if (!channel || !customerId) throw new Error('conversation_identity_required');
+  return `${channel}:${customerId}`;
+}
+
+function createInboundDomainEvent(message, tenant, connectorId) {
+  return createDomainEvent({
+    eventType: 'message.received',
+    tenantId: tenant.id,
+    conversationId: conversationIdFor(message),
+    messageId: message.id,
+    idempotencyKey: `${tenant.id}:${message.id}`,
+    actor: { type: 'connector', id: connectorId },
+    payload: {
+      channel: message.channel,
+      customerId: message.customerId,
+      customerName: message.customerName ?? null,
+      text: message.text ?? ''
+    }
+  });
+}
+
 export function createHttpServer({
   verifyToken,
   appSecret,
@@ -55,19 +80,20 @@ export function createHttpServer({
     async release(key) { claimedMessages.delete(key); }
   };
 
-  async function processMessage(message, tenant) {
+  async function processMessage(message, tenant, connectorId) {
     const claimKey = `${tenant.id}:${message.id}`;
     if (!(await claims.claim(claimKey))) return { processed: 0, duplicates: 1, failures: [] };
     const normalizedMessage = { ...message, tenantId: tenant.id };
+    const inboundDomainEvent = createInboundDomainEvent(normalizedMessage, tenant, connectorId);
     try {
-      conversationStore?.recordInbound(normalizedMessage);
+      conversationStore?.recordInbound(normalizedMessage, inboundDomainEvent);
       sseBroadcaster?.broadcast('message:inbound', {
         tenantId: tenant.id,
         customerId: normalizedMessage.customerId,
         customerName: normalizedMessage.customerName,
         text: normalizedMessage.text,
         messageId: normalizedMessage.id,
-        at: new Date().toISOString()
+        at: inboundDomainEvent.occurredAt
       });
 
       if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
@@ -162,7 +188,7 @@ export function createHttpServer({
             failures.push({ messageId: message.id, error: 'unknown_phone_number_id' });
             continue;
           }
-          const result = await processMessage(message, tenant);
+          const result = await processMessage(message, tenant, 'whatsapp-cloud');
           processed += result.processed;
           duplicates += result.duplicates;
           failures.push(...result.failures);
@@ -183,7 +209,7 @@ export function createHttpServer({
 
         const message = normalizeLinkedDeviceInbound(payload, { allowGroups: tenant.whatsapp?.allowGroups === true });
         if (!message) return sendJson(res, 202, { ignored: true });
-        const result = await processMessage(message, tenant);
+        const result = await processMessage(message, tenant, 'whatsapp-linked-device');
         return sendJson(res, 200, { received: 1, ...result });
       }
 
