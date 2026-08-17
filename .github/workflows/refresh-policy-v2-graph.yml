@@ -1,0 +1,34 @@
+name: refresh-policy-v2-graph
+
+on:
+  push:
+    branches:
+      - feat/policy-v2-approvals
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/policy-v2-approvals
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node tools/code-graph.mjs
+      - name: Commit generated graph
+        shell: bash
+        run: |
+          git add docs/CODE_GRAPH.md docs/code-graph.json
+          if git diff --cached --quiet; then
+            echo "Code graph already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: refresh code graph"
+          git push origin HEAD:feat/policy-v2-approvals
