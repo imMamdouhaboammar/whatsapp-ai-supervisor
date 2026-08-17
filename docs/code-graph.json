@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 64,
+  "moduleCount": 65,
   "edgeCount": 111,
   "cycles": [],
   "nodes": [
@@ -837,6 +837,23 @@
       ],
       "tests": [
         "tests/readiness.test.js"
+      ]
+    },
+    {
+      "id": "src/runtime/tenant-runtime-cache.js",
+      "group": "runtime",
+      "lines": 28,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "TenantRuntimeCache"
+        }
+      ],
+      "imports": [],
+      "importedBy": [],
+      "external": [],
+      "tests": [
+        "tests/tenant-runtime-cache.test.js"
       ]
     },
     {
