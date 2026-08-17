@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { loadConfig, resolveTenantSecret } from './config.js';
 import { InMemoryTenantStore } from './core/tenant-store.js';
 import { FileAuditStore } from './core/file-audit-store.js';
-import { FileClaimStore } from './core/file-claim-store.js';
 import { FileConversationStore } from './core/file-conversation-store.js';
 import { SupervisorOrchestrator } from './core/orchestrator.js';
 import { ModelGateway } from './ai/model-gateway.js';
@@ -15,6 +14,9 @@ import { createBrowserRuntime } from './browser/runtime-factory.js';
 import { ActionGateway } from './actions/action-gateway.js';
 import { collectReadiness } from './runtime/readiness.js';
 import { TenantRuntimeCache } from './runtime/tenant-runtime-cache.js';
+import { createDurableServiceLifecycle } from './runtime/durable-service-lifecycle.js';
+import { createStorageRuntime } from './storage/storage-runtime.js';
+import { createInboundProcessingRuntime } from './jobs/durable-inbound-runtime.js';
 import { createManagementRouter } from './management/router.js';
 import { createLinkedDeviceStatusProvider } from './management/linked-device-status.js';
 import { AutonomousModeratorEngine } from './ai/moderator-engine.js';
@@ -25,8 +27,8 @@ const sseBroadcaster = new SseBroadcaster();
 const tenantsFile = resolve(process.env.TENANTS_FILE ?? './config/tenants.json');
 const tenantStore = new InMemoryTenantStore(config.tenants, tenantsFile);
 const auditStore = new FileAuditStore({ dataDir: config.dataDir });
-const claimStore = new FileClaimStore({ dataDir: config.dataDir });
 const conversationStore = new FileConversationStore({ dataDir: config.dataDir });
+const storageRuntime = await createStorageRuntime({ ...config.storage, dataDir: config.dataDir });
 const browserRuntime = createBrowserRuntime(config.browser);
 const actionGateway = browserRuntime ? new ActionGateway({ browserRuntime }) : null;
 const runtimeCache = new TenantRuntimeCache();
@@ -71,9 +73,7 @@ function buildModelProviders(tenant) {
 
 function orchestratorForTenant(tenant) {
   return runtimeCache.runtimeFor(tenant.id, () => {
-    const modelGateway = new ModelGateway({
-      providers: buildModelProviders(tenant)
-    });
+    const modelGateway = new ModelGateway({ providers: buildModelProviders(tenant) });
     return new SupervisorOrchestrator({
       modelGateway,
       channelSender: senderForTenant(tenant),
@@ -84,11 +84,26 @@ function orchestratorForTenant(tenant) {
   });
 }
 
+const inboundProcessing = createInboundProcessingRuntime({
+  tenantStore,
+  orchestratorForTenant,
+  auditStore,
+  conversationStore,
+  domainEventStore: storageRuntime.domainEventStore,
+  sseBroadcaster,
+  jobQueue: storageRuntime.jobQueue
+});
+const durableLifecycle = createDurableServiceLifecycle({
+  worker: inboundProcessing.worker,
+  storageRuntime
+});
+
 const readiness = () => collectReadiness({
   dataDir: config.dataDir,
   tenantCount: tenantStore.list().length,
   browserRuntime,
-  browserRequired: config.browser.required
+  browserRequired: config.browser.required,
+  storageProbe: storageRuntime.probe
 });
 
 const linkedDeviceStatus = createLinkedDeviceStatusProvider({
@@ -118,6 +133,7 @@ const managementRouter = createManagementRouter({
     service: 'whatsapp-ai-supervisor',
     ui: 'material3-operator',
     tenantCount: tenantStore.list().length,
+    storage: storageRuntime.backend,
     metaEnabled: config.meta.enabled,
     linkedDeviceEnabled: config.linkedDevice.enabled,
     browser: {
@@ -136,7 +152,10 @@ const server = createHttpServer({
   tenantStore,
   orchestratorForTenant,
   auditStore,
-  claimStore,
+  claimStore: storageRuntime.claimStore,
+  domainEventStore: storageRuntime.domainEventStore,
+  jobQueue: storageRuntime.jobQueue,
+  inboundDecisionHandler: inboundProcessing.decisionHandler,
   readiness,
   conversationStore,
   managementRouter,
@@ -145,7 +164,24 @@ const server = createHttpServer({
 });
 
 server.listen(config.port, config.host, () => {
+  durableLifecycle.start();
   console.log(`whatsapp-ai-supervisor listening on http://${config.host}:${config.port}`);
 });
 
-const keepAliveTimer = setInterval(() => {}, 60_000);
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`whatsapp-ai-supervisor shutting down (${signal})`);
+  await new Promise((resolveClose) => server.close(() => resolveClose()));
+  sseBroadcaster.close();
+  await durableLifecycle.stop();
+}
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, () => {
+    shutdown(signal)
+      .then(() => process.exit(0))
+      .catch(() => process.exit(1));
+  });
+}

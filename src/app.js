@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { normalizeWhatsAppWebhook, validateMetaSignature, verifyWebhookChallenge } from './channels/whatsapp-cloud.js';
 import { normalizeLinkedDeviceInbound } from './channels/whatsapp-linked-device.js';
-import { createDomainEvent, deriveDomainEvent } from './domain/domain-event.js';
+import { createDomainEvent } from './domain/domain-event.js';
+import { createInboundDecisionHandler } from './jobs/inbound-decision-handler.js';
 import { serveStaticUi } from './management/static-ui.js';
 
 function sendJson(res, status, body) {
@@ -55,22 +56,6 @@ function createInboundDomainEvent(message, tenant, connectorId) {
   });
 }
 
-function createDecisionDomainEvent(inboundEvent, result) {
-  return deriveDomainEvent(inboundEvent, {
-    eventType: 'decision.completed',
-    actor: { type: 'ai', id: 'supervisor' },
-    payload: {
-      action: result.action,
-      wouldAction: result.wouldAction ?? null,
-      reason: result.reason ?? null,
-      intent: result.model?.intent ?? null,
-      confidence: result.model?.confidence ?? null,
-      provider: result.model?.provider ?? null,
-      model: result.model?.model ?? null
-    }
-  });
-}
-
 export function createHttpServer({
   verifyToken,
   appSecret,
@@ -78,6 +63,9 @@ export function createHttpServer({
   orchestratorForTenant,
   auditStore,
   claimStore = null,
+  domainEventStore = null,
+  jobQueue = null,
+  inboundDecisionHandler = null,
   readiness = null,
   linkedDeviceIngressToken = null,
   managementToken = null,
@@ -95,44 +83,43 @@ export function createHttpServer({
     },
     async release(key) { claimedMessages.delete(key); }
   };
+  const handleInboundDecision = inboundDecisionHandler ?? createInboundDecisionHandler({
+    orchestratorForTenant,
+    auditStore,
+    conversationStore,
+    domainEventStore,
+    sseBroadcaster
+  });
 
   async function processMessage(message, tenant, connectorId) {
     const claimKey = `${tenant.id}:${message.id}`;
-    if (!(await claims.claim(claimKey))) return { processed: 0, duplicates: 1, failures: [] };
+    if (!(await claims.claim(claimKey))) return { processed: 0, queued: 0, duplicates: 1, failures: [] };
     const normalizedMessage = { ...message, tenantId: tenant.id };
-    const inboundDomainEvent = createInboundDomainEvent(normalizedMessage, tenant, connectorId);
+    const attemptedInboundEvent = createInboundDomainEvent(normalizedMessage, tenant, connectorId);
     try {
+      const inboundDomainEvent = await domainEventStore?.append(attemptedInboundEvent) ?? attemptedInboundEvent;
       conversationStore?.recordInbound(normalizedMessage, inboundDomainEvent);
       sseBroadcaster?.broadcastDomainEvent?.(inboundDomainEvent);
 
-      if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
-        const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
-        const decisionDomainEvent = createDecisionDomainEvent(inboundDomainEvent, result);
-        auditStore.append({
-          id: crypto.randomUUID(),
+      if (jobQueue) {
+        const idempotencyRoot = inboundDomainEvent.idempotencyKey ?? `${tenant.id}:${normalizedMessage.id}`;
+        await jobQueue.enqueue({
           tenantId: tenant.id,
-          messageId: normalizedMessage.id,
-          customerId: normalizedMessage.customerId,
-          channel: normalizedMessage.channel,
-          at: decisionDomainEvent.occurredAt,
-          model: null,
-          permission: result.permission,
-          result: { action: 'human', reason: 'human_takeover', wouldAction: null }
+          type: 'process_inbound',
+          payload: { message: normalizedMessage, inboundEvent: inboundDomainEvent },
+          idempotencyKey: `${idempotencyRoot}:process_inbound`,
+          maxAttempts: 5
         });
-        conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
-        sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
-        return { processed: 1, duplicates: 0, failures: [] };
+        return { processed: 1, queued: 1, duplicates: 0, failures: [] };
       }
 
-      const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
-      const decisionDomainEvent = createDecisionDomainEvent(inboundDomainEvent, result);
-      conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
-      sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
-      return { processed: 1, duplicates: 0, failures: [] };
+      await handleInboundDecision({ message: normalizedMessage, tenant, inboundEvent: inboundDomainEvent });
+      return { processed: 1, queued: 0, duplicates: 0, failures: [] };
     } catch {
       await claims.release(claimKey);
       return {
         processed: 0,
+        queued: 0,
         duplicates: 0,
         failures: [{ messageId: message.id, error: 'processing_failed' }]
       };
@@ -176,6 +163,7 @@ export function createHttpServer({
         const payload = JSON.parse(raw.toString('utf8') || '{}');
         const inbound = normalizeWhatsAppWebhook(payload);
         let processed = 0;
+        let queued = 0;
         let duplicates = 0;
         const failures = [];
         for (const message of inbound) {
@@ -186,10 +174,13 @@ export function createHttpServer({
           }
           const result = await processMessage(message, tenant, 'whatsapp-cloud');
           processed += result.processed;
+          queued += result.queued;
           duplicates += result.duplicates;
           failures.push(...result.failures);
         }
-        return sendJson(res, 200, { received: inbound.length, processed, duplicates, failures });
+        const body = { received: inbound.length, processed, duplicates, failures };
+        if (jobQueue) body.queued = queued;
+        return sendJson(res, 200, body);
       }
 
       if (req.method === 'POST' && url.pathname === '/internal/transports/linked-device/message') {

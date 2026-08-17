@@ -18,6 +18,14 @@ function envNumber(name, fallback) {
   return parsed;
 }
 
+function positiveInteger(name, fallback, max = 100) {
+  const value = envNumber(name, fallback);
+  if (!Number.isInteger(value) || value < 1 || value > max) {
+    throw new Error(`${name} must be an integer between 1 and ${max}`);
+  }
+  return value;
+}
+
 function requiredEnv(name) {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
@@ -51,6 +59,22 @@ function validateTenants(tenants) {
       throw new Error(`Linked-device tenant ${tenant.id} requires whatsapp.workerTokenEnv`);
     }
   }
+}
+
+function storageConfig() {
+  const backend = String(process.env.STORAGE_BACKEND ?? 'file').trim().toLowerCase();
+  if (!['file', 'postgres'].includes(backend)) {
+    throw new Error(`Unsupported STORAGE_BACKEND: ${backend}`);
+  }
+  const databaseUrl = process.env.DATABASE_URL || null;
+  if (backend === 'postgres' && !databaseUrl) {
+    throw new Error('DATABASE_URL is required for postgres storage');
+  }
+  return {
+    backend,
+    databaseUrl: backend === 'postgres' ? databaseUrl : null,
+    poolMax: positiveInteger('DATABASE_POOL_MAX', 10)
+  };
 }
 
 export function loadConfig() {
@@ -93,6 +117,7 @@ export function loadConfig() {
     dataDir: resolve(process.env.DATA_DIR ?? './data'),
     uiDir: resolve(process.env.UI_DIR ?? './ui/dist'),
     management: { token: managementToken },
+    storage: storageConfig(),
     meta,
     linkedDevice: {
       enabled: hasLinkedDeviceTenants,
