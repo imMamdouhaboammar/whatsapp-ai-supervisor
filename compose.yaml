@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-supervisor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-only-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-supervisor}
+    volumes:
+      - was-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-supervisor} -d ${POSTGRES_DB:-supervisor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   supervisor:
     build:
       context: .
@@ -13,6 +29,9 @@ services:
       PORT: 3000
       DATA_DIR: /app/data
       TENANTS_FILE: /app/config/tenants.json
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-supervisor}:${POSTGRES_PASSWORD:-local-dev-only-change-me}@postgres:5432/${POSTGRES_DB:-supervisor}}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
       BROWSER_RUNTIME: ${BROWSER_RUNTIME:-none}
       BROWSER_WORKER_URL: http://browser-worker:7331
       BROWSER_WORKER_TOKEN: ${BROWSER_WORKER_TOKEN:-}
@@ -22,12 +41,15 @@ services:
     volumes:
       - ./config:/app/config:ro
       - was-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 20s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
 
   browser-worker:
     profiles: ["browser"]
@@ -91,4 +113,5 @@ services:
 
 volumes:
   was-data:
+  was-postgres-data:
   was-whatsapp-web-data:
