@@ -354,7 +354,7 @@ None.
 | `ui/src/components/Status.tsx` | ui | 9 | 0 | 7 | `Status` | — |
 | `ui/src/components/TenantFormModal.tsx` | ui | 169 | 2 | 1 | `TenantFormModal` | — |
 | `ui/src/components/WhatsAppNumbersPanel.tsx` | ui | 199 | 3 | 1 | `WhatsAppNumbersPanel` | — |
-| `ui/src/hooks/useRealtime.ts` | ui | 77 | 1 | 1 | `RealtimeEvent`, `useRealtime` | — |
+| `ui/src/hooks/useRealtime.ts` | ui | 108 | 1 | 1 | `RealtimeEvent`, `connectRealtime`, `useRealtime` | — |
 | `ui/src/main.tsx` | ui | 15 | 1 | 0 | — | — |
 | `ui/src/pages/ActionsPage.tsx` | ui | 19 | 5 | 1 | `ActionsPage` | — |
 | `ui/src/pages/AuditPage.tsx` | ui | 22 | 5 | 1 | `AuditPage` | — |

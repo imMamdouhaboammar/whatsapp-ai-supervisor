@@ -1336,11 +1336,15 @@
     {
       "id": "ui/src/hooks/useRealtime.ts",
       "group": "ui",
-      "lines": 77,
+      "lines": 108,
       "exports": [
         {
           "kind": "interface",
           "name": "RealtimeEvent"
+        },
+        {
+          "kind": "function",
+          "name": "connectRealtime"
         },
         {
           "kind": "function",
