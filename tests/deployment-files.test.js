@@ -12,7 +12,7 @@ test('Dockerfile defines supervisor, browser-worker, and WhatsApp Web worker tar
   assert.match(dockerfile, /apt-get install -y --no-install-recommends sudo/);
   assert.match(dockerfile, /npm install -g --allow-scripts=agent-browser \"agent-browser@\$\{AGENT_BROWSER_VERSION\}\"/);
   assert.match(dockerfile, /agent-browser install --with-deps/);
-  assert.match(dockerfile, /apt-get purge -y sudo/);
+  assert.match(dockerfile, /SUDO_FORCE_REMOVE=yes apt-get purge -y sudo/);
   assert.match(dockerfile, /CMD \["node", "src\/cli\.js", "browser-worker"\]/);
   assert.match(dockerfile, /FROM node:22-bookworm-slim AS whatsapp-web-worker/);
   assert.match(dockerfile, /workers\/whatsapp-web\/package\.json/);

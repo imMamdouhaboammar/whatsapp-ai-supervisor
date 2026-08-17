@@ -29,7 +29,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends sudo \
     && npm install -g --allow-scripts=agent-browser "agent-browser@${AGENT_BROWSER_VERSION}" \
     && agent-browser install --with-deps \
-    && apt-get purge -y sudo \
+    && SUDO_FORCE_REMOVE=yes apt-get purge -y sudo \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 ENV BROWSER_WORKER_HOST=0.0.0.0 \
