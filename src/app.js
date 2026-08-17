@@ -38,7 +38,8 @@ export function createHttpServer({
   auditStore,
   claimStore = null,
   readiness = null,
-  linkedDeviceIngressToken = null, managementToken = null,
+  linkedDeviceIngressToken = null,
+  managementToken = null,
   conversationStore = null,
   managementRouter = null,
   sseBroadcaster = null,
@@ -106,7 +107,7 @@ export function createHttpServer({
         at: new Date().toISOString()
       });
       return { processed: 1, duplicates: 0, failures: [] };
-    } catch (error) {
+    } catch {
       await claims.release(claimKey);
       return {
         processed: 0,
@@ -186,13 +187,15 @@ export function createHttpServer({
         return sendJson(res, 200, { received: 1, ...result });
       }
 
-      if (req.method === 'POST' && url.pathname === '/v1/simulate') { if (managementToken && !bearerMatches(req, managementToken)) return sendJson(res, 401, { error: 'unauthorized' });
+      if (req.method === 'POST' && url.pathname === '/v1/simulate') {
+        if (managementToken && !bearerMatches(req, managementToken)) {
+          return sendJson(res, 401, { error: 'unauthorized' });
+        }
         const raw = await readRawBody(req);
         const body = JSON.parse(raw.toString('utf8') || '{}');
         const tenant = tenantStore.findById(body.tenantId);
         if (!tenant) return sendJson(res, 404, { error: 'tenant_not_found' });
         if (typeof body.text !== 'string' || !body.text.trim()) return sendJson(res, 400, { error: 'text_required' });
-        const dryRunTenant = { ...tenant, shadowMode: true };
         const message = {
           id: `sim-${crypto.randomUUID()}`,
           tenantId: tenant.id,
@@ -203,11 +206,14 @@ export function createHttpServer({
           text: body.text,
           timestamp: Math.floor(Date.now() / 1000)
         };
-        const result = await orchestratorForTenant(dryRunTenant).handle(message, dryRunTenant);
+        const result = await orchestratorForTenant(tenant).handle(message, tenant, { executionMode: 'simulation' });
         return sendJson(res, 200, { dryRun: true, result });
       }
 
-      if (req.method === 'GET' && url.pathname === '/v1/audit') { if (managementToken && !bearerMatches(req, managementToken)) return sendJson(res, 401, { error: 'unauthorized' });
+      if (req.method === 'GET' && url.pathname === '/v1/audit') {
+        if (managementToken && !bearerMatches(req, managementToken)) {
+          return sendJson(res, 401, { error: 'unauthorized' });
+        }
         const tenantId = url.searchParams.get('tenantId');
         if (!tenantId) return sendJson(res, 400, { error: 'tenantId_required' });
         return sendJson(res, 200, { events: auditStore.list(tenantId) });
