@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 76,
-  "edgeCount": 128,
+  "moduleCount": 77,
+  "edgeCount": 129,
   "cycles": [],
   "nodes": [
     {
@@ -26,7 +26,7 @@
     {
       "id": "src/ai/agentrouter-provider.js",
       "group": "ai",
-      "lines": 112,
+      "lines": 101,
       "exports": [
         {
           "kind": "class",
@@ -42,13 +42,14 @@
       ],
       "external": [],
       "tests": [
-        "tests/agentrouter-provider.test.js"
+        "tests/agentrouter-provider.test.js",
+        "tests/provider-transport-reliability.test.js"
       ]
     },
     {
       "id": "src/ai/anthropic-provider.js",
       "group": "ai",
-      "lines": 162,
+      "lines": 138,
       "exports": [
         {
           "kind": "class",
@@ -64,25 +65,29 @@
       ],
       "external": [],
       "tests": [
-        "tests/anthropic-provider.test.js"
+        "tests/anthropic-provider.test.js",
+        "tests/provider-transport-reliability.test.js"
       ]
     },
     {
       "id": "src/ai/model-gateway.js",
       "group": "ai",
-      "lines": 61,
+      "lines": 211,
       "exports": [
         {
           "kind": "class",
           "name": "ModelGateway"
         }
       ],
-      "imports": [],
+      "imports": [
+        "src/ai/provider-error.js"
+      ],
       "importedBy": [
         "src/server.js"
       ],
       "external": [],
       "tests": [
+        "tests/model-gateway-reliability.test.js",
         "tests/model-gateway.test.js"
       ]
     },
@@ -127,7 +132,7 @@
     {
       "id": "src/ai/openai-provider.js",
       "group": "ai",
-      "lines": 89,
+      "lines": 97,
       "exports": [
         {
           "kind": "class",
@@ -142,7 +147,31 @@
       ],
       "external": [],
       "tests": [
-        "tests/openai-provider.test.js"
+        "tests/openai-provider.test.js",
+        "tests/provider-transport-reliability.test.js"
+      ]
+    },
+    {
+      "id": "src/ai/provider-error.js",
+      "group": "ai",
+      "lines": 75,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "AiGatewayError"
+        },
+        {
+          "kind": "function",
+          "name": "normalizeProviderError"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/ai/model-gateway.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/model-gateway-reliability.test.js"
       ]
     },
     {
@@ -1908,6 +1937,10 @@
     {
       "from": "src/ai/anthropic-provider.js",
       "to": "src/ai/thinking-parser.js"
+    },
+    {
+      "from": "src/ai/model-gateway.js",
+      "to": "src/ai/provider-error.js"
     },
     {
       "from": "src/ai/openai-provider.js",

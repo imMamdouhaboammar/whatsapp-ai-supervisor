@@ -44,17 +44,22 @@ test('uses Responses API with store false and configured GPT model', async () =>
   assert.equal(result.provider, 'openai');
 });
 
-test('throws useful error on non-success OpenAI response', async () => {
+test('non-success OpenAI response preserves status without response body leakage', async () => {
   const fetchImpl = async () => ({
     ok: false,
     status: 429,
-    async text() { return 'rate limited'; }
+    async text() { return 'rate limited private body'; }
   });
   const provider = new OpenAIProvider({ apiKey: 'test-key', fetchImpl });
 
   await assert.rejects(
     provider.decide({ model: 'gpt-5.6', message: { text: 'hello' } }),
-    /OpenAI request failed \(429\)/
+    (error) => {
+      assert.equal(error.status, 429);
+      assert.equal(error.message, 'OpenAI request failed');
+      assert.equal(error.message.includes('private body'), false);
+      return true;
+    }
   );
 });
 
@@ -66,6 +71,6 @@ test('rejects malformed model decisions even if provider returns JSON', async ()
 
   await assert.rejects(
     provider.decide({ model: 'gpt-5.6', message: { text: 'hello' } }),
-    /Invalid model decision/
+    (error) => error.code === 'invalid_response' && /Invalid model decision/.test(error.message)
   );
 });

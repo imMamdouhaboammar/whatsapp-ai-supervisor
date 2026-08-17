@@ -1,6 +1,10 @@
 import { ModelProvider } from './model-provider.js';
 import { parseDecisionJson, validateDecision } from './thinking-parser.js';
 
+function httpError(status) {
+  return Object.assign(new Error('Anthropic/Tabitoken request failed'), { status: Number(status) });
+}
+
 export class AnthropicProvider extends ModelProvider {
   constructor({
     apiKeys = [],
@@ -13,7 +17,6 @@ export class AnthropicProvider extends ModelProvider {
     const rawKeys = Array.isArray(apiKeys) && apiKeys.length > 0
       ? apiKeys
       : (apiKey ? String(apiKey).split(',').map((k) => k.trim()).filter(Boolean) : []);
-
     if (rawKeys.length === 0) throw new Error('ANTHROPIC_API_KEY / TABITOKEN_API_KEY is required');
     this.apiKeys = rawKeys;
     this.keyIndex = 0;
@@ -27,12 +30,10 @@ export class AnthropicProvider extends ModelProvider {
   }
 
   rotateKey() {
-    if (this.apiKeys.length > 1) {
-      this.keyIndex = (this.keyIndex + 1) % this.apiKeys.length;
-    }
+    if (this.apiKeys.length > 1) this.keyIndex = (this.keyIndex + 1) % this.apiKeys.length;
   }
 
-  async decide({ model = 'claude-opus-4-8', message, businessContext = null, availableCapabilities = [] }) {
+  async decide({ model = 'claude-opus-4-8', message, businessContext = null, availableCapabilities = [], signal = undefined }) {
     const isThinkingModel = model.includes('thinking') || model.includes('opus-5') || model.includes('opus-4');
     const systemPrompt = [
       'You are Claude Opus, an advanced proactive AI agent managing business WhatsApp conversations.',
@@ -60,14 +61,10 @@ export class AnthropicProvider extends ModelProvider {
     });
 
     let lastError = null;
-    const maxAttempts = this.apiKeys.length;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; attempt < this.apiKeys.length; attempt += 1) {
+      if (signal?.aborted) throw signal.reason ?? Object.assign(new Error('Request aborted'), { name: 'AbortError' });
       const currentKey = this.getActiveKey();
       try {
-        // First try standard Anthropic Messages API
-        const isMessagesApi = !this.baseUrl.includes('chat/completions');
-        
         let requestUrl = `${this.baseUrl}/messages`;
         let headers = {
           'x-api-key': currentKey,
@@ -76,13 +73,9 @@ export class AnthropicProvider extends ModelProvider {
         };
         let bodyPayload;
 
-        // If baseUrl is an OpenAI-compatible proxy (like some Tabitoken routes)
         if (this.baseUrl.endsWith('/v1') && !this.baseUrl.includes('anthropic.com')) {
           requestUrl = `${this.baseUrl}/chat/completions`;
-          headers = {
-            authorization: `Bearer ${currentKey}`,
-            'content-type': 'application/json'
-          };
+          headers = { authorization: `Bearer ${currentKey}`, 'content-type': 'application/json' };
           bodyPayload = {
             model,
             messages: [
@@ -92,70 +85,53 @@ export class AnthropicProvider extends ModelProvider {
             temperature: 0.2
           };
         } else {
-          // Official Anthropic Messages API
           bodyPayload = {
             model,
             max_tokens: 4096,
             system: systemPrompt,
-            messages: [
-              { role: 'user', content: userPayload }
-            ]
+            messages: [{ role: 'user', content: userPayload }]
           };
-          if (isThinkingModel) {
-            bodyPayload.thinking = {
-              type: 'enabled',
-              budget_tokens: 2048
-            };
-          }
+          if (isThinkingModel) bodyPayload.thinking = { type: 'enabled', budget_tokens: 2048 };
         }
 
         const response = await this.fetchImpl(requestUrl, {
           method: 'POST',
+          signal,
           headers,
           body: JSON.stringify(bodyPayload)
         });
-
-        if (!response.ok) {
-          const detail = await response.text();
-          throw new Error(`Anthropic/Tabitoken request failed (${response.status}): ${detail.slice(0, 500)}`);
-        }
+        if (!response.ok) throw httpError(response.status);
 
         const data = await response.json();
         let rawContent = '';
         let thinkingContent = null;
-
-        // Extract from Anthropic structure
         if (Array.isArray(data.content)) {
           for (const block of data.content) {
-            if (block.type === 'thinking') {
-              thinkingContent = block.thinking;
-            } else if (block.type === 'text') {
-              rawContent += block.text;
-            }
+            if (block.type === 'thinking') thinkingContent = block.thinking;
+            else if (block.type === 'text') rawContent += block.text;
           }
         } else if (data.choices?.[0]?.message) {
-          // OpenAI-compatible structure
           rawContent = data.choices[0].message.content ?? '';
           thinkingContent = data.choices[0].message.reasoning_content ?? null;
         }
 
-        const parsed = parseDecisionJson(rawContent);
-        if (thinkingContent && !parsed.thinking) {
-          parsed.thinking = thinkingContent;
+        let parsed;
+        try {
+          parsed = parseDecisionJson(rawContent);
+          if (thinkingContent && !parsed.thinking) parsed.thinking = thinkingContent;
+          parsed = validateDecision(parsed);
+        } catch (error) {
+          throw Object.assign(error instanceof Error ? error : new Error('Invalid Anthropic response'), { code: 'invalid_response' });
         }
-
-        const validated = validateDecision(parsed);
-        return {
-          ...validated,
-          model,
-          provider: 'anthropic'
-        };
-      } catch (err) {
-        lastError = err;
+        return { ...parsed, model, provider: 'anthropic' };
+      } catch (error) {
+        if (signal?.aborted || error?.name === 'AbortError') throw error;
+        lastError = error;
+        const retryWithAnotherKey = (error?.status === 401 || error?.status === 403 || error?.status === 429) && attempt + 1 < this.apiKeys.length;
+        if (!retryWithAnotherKey) throw error;
         this.rotateKey();
       }
     }
-
-    throw lastError ?? new Error('Anthropic/Tabitoken all key attempts failed');
+    throw lastError ?? new Error('Anthropic/Tabitoken request failed');
   }
 }
