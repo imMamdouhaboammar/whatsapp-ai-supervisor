@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 75,
-  "edgeCount": 127,
+  "moduleCount": 76,
+  "edgeCount": 128,
   "cycles": [],
   "nodes": [
     {
@@ -480,6 +480,33 @@
       ]
     },
     {
+      "id": "src/connectors/connector-state.js",
+      "group": "other",
+      "lines": 83,
+      "exports": [
+        {
+          "kind": "const",
+          "name": "CONNECTOR_STATES"
+        },
+        {
+          "kind": "function",
+          "name": "normalizeLinkedDeviceConnectorState"
+        },
+        {
+          "kind": "function",
+          "name": "configuredCloudConnectorState"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/management/linked-device-status.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/connector-state.test.js"
+      ]
+    },
+    {
       "id": "src/core/audit-store.js",
       "group": "decision",
       "lines": 16,
@@ -824,7 +851,7 @@
     {
       "id": "src/management/linked-device-status.js",
       "group": "http",
-      "lines": 111,
+      "lines": 155,
       "exports": [
         {
           "kind": "function",
@@ -832,13 +859,16 @@
         }
       ],
       "imports": [
-        "src/channels/whatsapp-linked-device.js"
+        "src/channels/whatsapp-linked-device.js",
+        "src/connectors/connector-state.js"
       ],
       "importedBy": [
         "src/server.js"
       ],
       "external": [],
-      "tests": []
+      "tests": [
+        "tests/connector-status-provider.test.js"
+      ]
     },
     {
       "id": "src/management/router.js",
@@ -1300,7 +1330,7 @@
     {
       "id": "ui/src/api/types.ts",
       "group": "ui",
-      "lines": 146,
+      "lines": 149,
       "exports": [
         {
           "kind": "type",
@@ -1309,6 +1339,10 @@
         {
           "kind": "type",
           "name": "ConversationControl"
+        },
+        {
+          "kind": "type",
+          "name": "ConnectorState"
         },
         {
           "kind": "interface",
@@ -1824,7 +1858,7 @@
     {
       "id": "ui/src/pages/WhatsAppPage.tsx",
       "group": "ui",
-      "lines": 33,
+      "lines": 49,
       "exports": [
         {
           "kind": "function",
@@ -1986,6 +2020,10 @@
     {
       "from": "src/management/linked-device-status.js",
       "to": "src/channels/whatsapp-linked-device.js"
+    },
+    {
+      "from": "src/management/linked-device-status.js",
+      "to": "src/connectors/connector-state.js"
     },
     {
       "from": "src/management/router.js",
