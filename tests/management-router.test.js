@@ -66,6 +66,7 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     ['acme', { id: 'acme', businessContext: { name: 'Acme' }, whatsapp: { mode: 'cloud', numbers: [] }, ai: {}, policy: { rules: [] } }]
   ]);
   let persisted = false;
+  const changedTenants = [];
 
   const mockStore = {
     list: () => Array.from(tenants.values()),
@@ -109,7 +110,8 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     auditStore: { list: () => [] },
     conversationStore: { list: () => [] },
     readiness: async () => ({ ready: true }),
-    linkedDeviceStatus: async () => []
+    linkedDeviceStatus: async () => [],
+    onTenantChanged: (tenantId) => changedTenants.push(tenantId)
   });
 
   const server = createServer((req, res) => router(req, res, new URL(req.url, 'http://localhost')));
@@ -171,6 +173,7 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     });
     assert.equal(delRes.status, 200);
     assert.equal(mockStore.findById('beta'), null);
+    assert.deepEqual(changedTenants, ['beta', 'beta', 'beta', 'beta', 'beta']);
   } finally {
     server.close();
   }
