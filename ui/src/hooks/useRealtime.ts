@@ -15,6 +15,16 @@ interface ConnectRealtimeOptions {
   onEvent?: (event: RealtimeEvent) => void;
 }
 
+interface RealtimeLoopOptions {
+  signal: AbortSignal;
+  tokenProvider?: () => string;
+  onConnected?: (connected: boolean) => void;
+  onEvent?: (event: RealtimeEvent) => void;
+  retryDelayMs?: number;
+  connectImpl?: (options: ConnectRealtimeOptions) => Promise<void>;
+  sleepImpl?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+}
+
 function parseSseBlock(block: string) {
   let type = 'message';
   const data: string[] = [];
@@ -23,6 +33,17 @@ function parseSseBlock(block: string) {
     if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
   }
   return { type, data: data.join('\n') };
+}
+
+function sleep(milliseconds: number, signal: AbortSignal) {
+  if (milliseconds <= 0 || signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
 }
 
 export async function connectRealtime({
@@ -67,40 +88,45 @@ export async function connectRealtime({
   }
 }
 
+export async function runRealtimeLoop({
+  signal,
+  tokenProvider = managementToken,
+  onConnected = () => {},
+  onEvent,
+  retryDelayMs = 3000,
+  connectImpl = connectRealtime,
+  sleepImpl = sleep
+}: RealtimeLoopOptions) {
+  while (!signal.aborted) {
+    try {
+      await connectImpl({
+        token: tokenProvider(),
+        signal,
+        onConnected,
+        onEvent
+      });
+    } catch {
+      if (signal.aborted) return;
+    }
+    if (signal.aborted) return;
+    onConnected(false);
+    await sleepImpl(retryDelayMs, signal);
+  }
+}
+
 export function useRealtime(onEvent?: (event: RealtimeEvent) => void) {
   const [connected, setConnected] = useState(false);
   const eventCallbackRef = useRef(onEvent);
   eventCallbackRef.current = onEvent;
 
   useEffect(() => {
-    let controller: AbortController | null = null;
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-    let isUnmounted = false;
-
-    const connect = async () => {
-      if (isUnmounted) return;
-      controller = new AbortController();
-      try {
-        await connectRealtime({
-          token: managementToken(),
-          signal: controller.signal,
-          onConnected: setConnected,
-          onEvent: (event) => eventCallbackRef.current?.(event)
-        });
-      } catch {
-        if (controller.signal.aborted || isUnmounted) return;
-      }
-      if (isUnmounted) return;
-      setConnected(false);
-      reconnectTimeout = setTimeout(() => void connect(), 3000);
-    };
-
-    void connect();
-    return () => {
-      isUnmounted = true;
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      controller?.abort();
-    };
+    const controller = new AbortController();
+    void runRealtimeLoop({
+      signal: controller.signal,
+      onConnected: setConnected,
+      onEvent: (event) => eventCallbackRef.current?.(event)
+    });
+    return () => controller.abort();
   }, []);
 
   return { connected };
