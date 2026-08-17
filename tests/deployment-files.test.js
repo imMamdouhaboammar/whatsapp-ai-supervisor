@@ -54,5 +54,7 @@ test('optional edge compose provides Caddy TLS in front of the supervisor', asyn
   assert.match(edge, /"443:443"/);
   assert.match(edge, /caddy-data:\/data/);
   assert.match(caddy, /\{\$WAS_DOMAIN\}/);
+  assert.match(caddy, /@internal path \/internal\/\*/);
+  assert.match(caddy, /respond @internal 404/);
   assert.match(caddy, /reverse_proxy supervisor:3000/);
 });
