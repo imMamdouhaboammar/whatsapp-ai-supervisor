@@ -15,8 +15,8 @@ jobs:
         node: [22, 24]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -26,17 +26,19 @@ jobs:
   ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: npm install --prefix ui --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci --prefix ui --ignore-scripts
       - run: npm run --prefix ui check
 
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: docker build --target supervisor -t whatsapp-ai-supervisor:test .
       - run: docker build --target browser-worker -t whatsapp-ai-supervisor-browser:test .
       - run: docker build --target whatsapp-web-worker -t whatsapp-ai-supervisor-whatsapp-web:test .
