@@ -1336,7 +1336,7 @@
     {
       "id": "ui/src/hooks/useRealtime.ts",
       "group": "ui",
-      "lines": 108,
+      "lines": 134,
       "exports": [
         {
           "kind": "interface",
@@ -1345,6 +1345,10 @@
         {
           "kind": "function",
           "name": "connectRealtime"
+        },
+        {
+          "kind": "function",
+          "name": "runRealtimeLoop"
         },
         {
           "kind": "function",
