@@ -111,7 +111,7 @@ export function createHttpServer({
       return {
         processed: 0,
         duplicates: 0,
-        failures: [{ messageId: message.id, error: error instanceof Error ? error.message : String(error) }]
+        failures: [{ messageId: message.id, error: 'processing_failed' }]
       };
     }
   }
