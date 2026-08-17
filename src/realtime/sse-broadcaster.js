@@ -1,9 +1,9 @@
+import { assertDomainEvent } from '../domain/domain-event.js';
+
 /**
  * Server-Sent Events (SSE) Broadcaster
- * Manages active HTTP connections, heartbeats, and broadcasts live events
- * (inbound messages, AI decisions, audit logs, WhatsApp session status).
+ * Manages active HTTP connections, heartbeats, and broadcasts live events.
  */
-
 export class SseBroadcaster {
   constructor({ heartbeatIntervalMs = 15000, logger = console } = {}) {
     this.heartbeatIntervalMs = heartbeatIntervalMs;
@@ -28,10 +28,7 @@ export class SseBroadcaster {
       'Access-Control-Allow-Origin': '*'
     });
     res.flushHeaders?.();
-
-    // Initial greeting / connection established
     res.write(`event: connected\ndata: ${JSON.stringify({ status: 'connected', timestamp: new Date().toISOString() })}\n\n`);
-
     this.clients.add(res);
 
     res.on('close', () => {
@@ -45,7 +42,6 @@ export class SseBroadcaster {
 
   broadcast(eventType, payload = {}) {
     if (this.clients.size === 0) return;
-
     const data = JSON.stringify(payload);
     const message = `event: ${eventType}\ndata: ${data}\n\n`;
 
@@ -57,6 +53,11 @@ export class SseBroadcaster {
         this.clients.delete(client);
       }
     }
+  }
+
+  broadcastDomainEvent(event) {
+    assertDomainEvent(event);
+    this.broadcast(event.eventType, event);
   }
 
   clientCount() {
