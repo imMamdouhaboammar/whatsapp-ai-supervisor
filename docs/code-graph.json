@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
   "moduleCount": 66,
-  "edgeCount": 113,
+  "edgeCount": 114,
   "cycles": [],
   "nodes": [
     {
@@ -176,7 +176,7 @@
     {
       "id": "src/app.js",
       "group": "http",
-      "lines": 258,
+      "lines": 254,
       "exports": [
         {
           "kind": "function",
@@ -372,7 +372,7 @@
     {
       "id": "src/channels/whatsapp-linked-device.js",
       "group": "channel",
-      "lines": 84,
+      "lines": 89,
       "exports": [
         {
           "kind": "function",
@@ -543,7 +543,7 @@
     {
       "id": "src/core/file-conversation-store.js",
       "group": "decision",
-      "lines": 204,
+      "lines": 221,
       "exports": [
         {
           "kind": "class",
@@ -640,7 +640,8 @@
       ],
       "imports": [],
       "importedBy": [
-        "src/app.js"
+        "src/app.js",
+        "src/realtime/sse-broadcaster.js"
       ],
       "external": [
         "node:crypto"
@@ -792,14 +793,16 @@
     {
       "id": "src/realtime/sse-broadcaster.js",
       "group": "runtime",
-      "lines": 76,
+      "lines": 77,
       "exports": [
         {
           "kind": "class",
           "name": "SseBroadcaster"
         }
       ],
-      "imports": [],
+      "imports": [
+        "src/domain/domain-event.js"
+      ],
       "importedBy": [
         "src/server.js"
       ],
@@ -1758,6 +1761,10 @@
     {
       "from": "src/management/router.js",
       "to": "src/management/dashboard.js"
+    },
+    {
+      "from": "src/realtime/sse-broadcaster.js",
+      "to": "src/domain/domain-event.js"
     },
     {
       "from": "src/server.js",
