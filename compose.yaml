@@ -1,0 +1,94 @@
+services:
+  supervisor:
+    build:
+      context: .
+      target: supervisor
+    image: whatsapp-ai-supervisor:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /app/data
+      TENANTS_FILE: /app/config/tenants.json
+      BROWSER_RUNTIME: ${BROWSER_RUNTIME:-none}
+      BROWSER_WORKER_URL: http://browser-worker:7331
+      BROWSER_WORKER_TOKEN: ${BROWSER_WORKER_TOKEN:-}
+      LINKED_DEVICE_WORKER_URL_OVERRIDE: ${LINKED_DEVICE_WORKER_URL_OVERRIDE:-http://whatsapp-web-worker:7441}
+    ports:
+      - "${WAS_BIND_ADDRESS:-127.0.0.1}:${WAS_PORT:-3000}:3000"
+    volumes:
+      - ./config:/app/config:ro
+      - was-data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  browser-worker:
+    profiles: ["browser"]
+    build:
+      context: .
+      target: browser-worker
+    image: whatsapp-ai-supervisor-browser:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BROWSER_WORKER_HOST: 0.0.0.0
+      BROWSER_WORKER_PORT: 7331
+      BROWSER_WORKER_RUNTIME: agent-browser
+      BROWSER_ENGINE: ${BROWSER_ENGINE:-chrome}
+      BROWSER_WORKER_TOKEN: ${BROWSER_WORKER_TOKEN:-}
+      BROWSER_WORKER_MAX_CONCURRENCY: ${BROWSER_WORKER_MAX_CONCURRENCY:-2}
+    healthcheck:
+      test: ["CMD", "node", "-e", "const token=process.env.BROWSER_WORKER_TOKEN;const headers=token?{authorization:'Bearer '+token}:{};fetch('http://127.0.0.1:7331/health',{headers}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+
+  whatsapp-web-worker:
+    profiles: ["linked-device"]
+    build:
+      context: .
+      target: whatsapp-web-worker
+    image: whatsapp-ai-supervisor-whatsapp-web:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TENANTS_FILE: /app/config/tenants.json
+      WHATSAPP_WEB_WORKER_HOST: 0.0.0.0
+      WHATSAPP_WEB_WORKER_PORT: 7441
+      WHATSAPP_WEB_DATA_DIR: /app/data/whatsapp-web
+      SUPERVISOR_INTERNAL_URL: http://supervisor:3000
+      WHATSAPP_LINKED_DEVICE_WORKER_TOKEN: ${WHATSAPP_LINKED_DEVICE_WORKER_TOKEN:-}
+      LINKED_DEVICE_INGRESS_TOKEN: ${LINKED_DEVICE_INGRESS_TOKEN:-}
+      WHATSAPP_WEB_SPOOL_FLUSH_MS: ${WHATSAPP_WEB_SPOOL_FLUSH_MS:-5000}
+      WHATSAPP_WEB_MIN_SEND_INTERVAL_MS: ${WHATSAPP_WEB_MIN_SEND_INTERVAL_MS:-350}
+      WHATSAPP_WEB_MAX_SEND_QUEUE: ${WHATSAPP_WEB_MAX_SEND_QUEUE:-100}
+    ports:
+      - "127.0.0.1:${WHATSAPP_WEB_WORKER_PORT:-7441}:7441"
+    volumes:
+      - ./config:/app/config:ro
+      - was-whatsapp-web-data:/app/data/whatsapp-web
+    depends_on:
+      supervisor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const h={authorization:'Bearer '+process.env.WHATSAPP_LINKED_DEVICE_WORKER_TOKEN};fetch('http://127.0.0.1:7441/health',{headers:h}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+
+volumes:
+  was-data:
+  was-whatsapp-web-data:

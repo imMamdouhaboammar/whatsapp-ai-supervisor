@@ -12,20 +12,30 @@
       ]
     },
     "whatsapp": {
-      "accessTokenEnv": "DEMO_META_ACCESS_TOKEN"
+      "accessTokenEnv": "DEMO_META_ACCESS_TOKEN",
+      "mode": "cloud"
     },
     "ai": {
       "apiKeyEnv": "DEMO_OPENAI_API_KEY",
       "route": "standard",
       "routes": {
         "fast": [
-          { "provider": "openai", "model": "gpt-5.6" }
+          {
+            "provider": "openai",
+            "model": "gpt-5.6"
+          }
         ],
         "standard": [
-          { "provider": "openai", "model": "gpt-5.6" }
+          {
+            "provider": "openai",
+            "model": "gpt-5.6"
+          }
         ],
         "critical": [
-          { "provider": "openai", "model": "gpt-5.6" }
+          {
+            "provider": "openai",
+            "model": "gpt-5.6"
+          }
         ]
       }
     },
@@ -33,13 +43,54 @@
       "minConfidence": 0.82,
       "defaultAction": "human",
       "rules": [
-        { "id": "faq-auto", "intent": "faq", "action": "reply" },
-        { "id": "hours-auto", "intent": "working_hours", "action": "reply" },
-        { "id": "location-auto", "intent": "location", "action": "reply" },
-        { "id": "pricing-draft", "intent": "pricing", "action": "draft" },
-        { "id": "complaint-human", "intent": "complaint", "action": "human" },
-        { "id": "refund-human", "intent": "refund", "action": "human" },
-        { "id": "legal-human", "intent": "legal", "action": "human" }
+        {
+          "id": "faq-auto",
+          "intent": "faq",
+          "action": "reply"
+        },
+        {
+          "id": "hours-auto",
+          "intent": "working_hours",
+          "action": "reply"
+        },
+        {
+          "id": "location-auto",
+          "intent": "location",
+          "action": "reply"
+        },
+        {
+          "id": "order-status-browser",
+          "intent": "order_status",
+          "action": "act",
+          "capability": {
+            "type": "browser",
+            "task": "Open the customer record for {{customerId}} and return the current order status.",
+            "allowedDomains": [
+              "portal.example.com"
+            ],
+            "timeoutMs": 30000
+          }
+        },
+        {
+          "id": "pricing-draft",
+          "intent": "pricing",
+          "action": "draft"
+        },
+        {
+          "id": "complaint-human",
+          "intent": "complaint",
+          "action": "human"
+        },
+        {
+          "id": "refund-human",
+          "intent": "refund",
+          "action": "human"
+        },
+        {
+          "id": "legal-human",
+          "intent": "legal",
+          "action": "human"
+        }
       ]
     }
   }

@@ -29,7 +29,8 @@ test('uses Responses API with store false and configured GPT model', async () =>
   const result = await provider.decide({
     model: 'gpt-5.6',
     message: { text: 'hello', customerId: '201' },
-    businessContext: { name: 'Demo' }
+    businessContext: { name: 'Demo' },
+    availableCapabilities: [{ intent: 'order_status', type: 'browser' }]
   });
 
   const body = JSON.parse(calls[0].options.body);
@@ -37,6 +38,8 @@ test('uses Responses API with store false and configured GPT model', async () =>
   assert.equal(body.model, 'gpt-5.6');
   assert.equal(body.store, false);
   assert.equal(body.text.format.type, 'json_schema');
+  const input = JSON.parse(body.input);
+  assert.deepEqual(input.availableCapabilities, [{ intent: 'order_status', type: 'browser' }]);
   assert.equal(result.intent, 'faq');
   assert.equal(result.provider, 'openai');
 });

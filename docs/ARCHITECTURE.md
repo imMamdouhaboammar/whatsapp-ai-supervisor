@@ -2,103 +2,192 @@
 
 ## Product boundary
 
-The service treats WhatsApp as one channel adapter and the LLM as one model adapter. Business authority lives in deterministic application code, not in the model prompt.
+The supervisor has four independent concerns:
 
-## Trust boundaries
+```text
+WhatsApp transport
+Model provider
+Permission authority
+Optional business action runtime
+```
 
-1. **Meta boundary**: inbound webhook payloads are accepted only after webhook verification and, for POST requests, signature validation when `META_APP_SECRET` is configured.
-2. **Tenant boundary**: the WhatsApp `phone_number_id` resolves to exactly one tenant before model access or outbound messaging.
-3. **Model boundary**: model output is parsed and validated into a constrained decision object. Invalid output is rejected.
-4. **Authority boundary**: `PermissionEngine` evaluates intent, confidence, and tenant rules. The model cannot raise the allowed autonomy level.
-5. **Delivery boundary**: only the orchestrator can invoke the channel sender, and only after permission evaluation.
-6. **Audit boundary**: every successful orchestration result is recorded with the model decision and policy decision.
+A tenant can change WhatsApp transport or LLM provider without changing permission semantics.
 
-## Inbound flow
+## WhatsApp transport contract
+
+The current transport implementations are:
+
+```text
+cloud          official Meta Cloud API
+linked-device  authenticated remote worker using WhatsApp Web
+```
+
+The linked-device worker protocol is intentionally HTTP-based and implementation-neutral. The first worker uses `whatsapp-web.js`. A future `whatsmeow` worker can implement the same protocol without changing the supervisor orchestration path.
+
+## Cloud API flow
 
 ```text
 Meta webhook
   -> raw-body signature validation
   -> WhatsApp payload normalization
-  -> duplicate message claim
+  -> durable message claim
   -> tenant resolution by phone_number_id
-  -> ModelGateway
-  -> provider decision
-  -> output validation
+  -> model decision
   -> PermissionEngine
-  -> Shadow / Draft / Reply / Human / Ignore / Act
-  -> optional WhatsApp send
-  -> audit event
+  -> optional Graph API reply
+  -> durable audit event
 ```
 
-If orchestration fails after a message ID is claimed, the in-memory claim is released so Meta can retry.
+## Linked-device flow
 
-## Model provider contract
+```text
+WhatsApp Web message event
+  -> worker input filtering
+  -> disk spool write
+  -> authenticated POST to supervisor internal ingress
+  -> tenant resolution by sessionId
+  -> durable supervisor message claim
+  -> model decision
+  -> PermissionEngine
+  -> authenticated POST to worker send endpoint
+  -> per-session outbound queue
+  -> WhatsApp Web send
+  -> durable audit event
+```
 
-A provider implements:
+Worker delivery is at-least-once. Supervisor processing is idempotent for a single instance through the durable claim store.
+
+## Linked-device trust boundaries
+
+1. Worker management and send endpoints require `WHATSAPP_LINKED_DEVICE_WORKER_TOKEN`.
+2. Supervisor internal linked-device ingress requires `LINKED_DEVICE_INGRESS_TOKEN`.
+3. The two tokens are separate so compromise of one direction does not automatically grant the other direction.
+4. Session status including QR and pairing code is available only through the authenticated worker API.
+5. LocalAuth data is stored outside source control and treated as sensitive account-access material.
+6. Group messages are ignored by default.
+7. The supervisor resolves the tenant from configured `sessionId`; the worker cannot select an arbitrary tenant ID.
+
+## Linked-device durability
+
+The worker writes inbound payloads to:
+
+```text
+data/whatsapp-web/spool/<sha256>.json
+```
+
+The file key is derived from session ID and WhatsApp message ID.
+
+A file is deleted only after the supervisor returns a successful HTTP response. Network errors and supervisor errors retain the file for retry.
+
+The supervisor creates its own claim under:
+
+```text
+data/claims/<sha256>.json
+```
+
+This second boundary prevents a retained or retried spool item from creating a second AI decision or duplicate outbound reply after normal restarts.
+
+## Linked-device session lifecycle
+
+Each configured session gets its own `LocalAuth` client ID and browser profile.
+
+Tracked states include:
+
+```text
+starting
+pairing
+authenticated
+ready
+auth-failure
+disconnected
+error
+```
+
+On disconnect, the worker destroys the previous client and restarts the session with capped exponential backoff. A valid LocalAuth profile reconnects without new pairing. Invalid auth returns to pairing.
+
+## Outbound linked-device queue
+
+Each session owns a serialized Promise chain. Only one `sendMessage` call runs at a time for that session.
+
+Two bounds are configurable:
+
+```text
+WHATSAPP_WEB_MIN_SEND_INTERVAL_MS
+WHATSAPP_WEB_MAX_SEND_QUEUE
+```
+
+The queue cap returns `send_queue_full`, mapped to HTTP 429 by the worker API.
+
+## Model boundary
+
+A model provider returns a constrained decision:
 
 ```js
-async decide({ model, message, businessContext }) => ({
+{
   intent,
   confidence,
   reply,
   requestedAction,
   model,
   provider
-})
-```
-
-`ModelGateway` receives an ordered route such as:
-
-```json
-{
-  "standard": [
-    { "provider": "openai", "model": "gpt-5.6" },
-    { "provider": "another-provider", "model": "fallback-model" }
-  ]
 }
 ```
 
-If one provider fails, the next configured candidate is tried. Adding Anthropic, Gemini, OpenRouter, Azure OpenAI, or a local model does not require changes to WhatsApp or permission logic.
+`requestedAction` is a recommendation, not authority.
 
-## Permission semantics
+## Permission boundary
 
 Tenant policy is the maximum authority:
 
 ```text
-ignore  -> send nothing
-human   -> require a human
- draft  -> create a draft only
- reply  -> allow an outbound reply
- act    -> allow an action executor
+ignore
+human
+draft
+reply
+act
 ```
 
-Rules are intent-specific. Unknown intents use `defaultAction`. Confidence below `minConfidence` always becomes `human`.
+Low confidence becomes `human`. Unknown intents use `defaultAction`. A model may request less authority than policy permits, never more.
 
-The model may reduce autonomy. For example, if policy allows `reply` but the model requests `human`, the final action is `human`. The reverse is not allowed: a model request for `act` cannot upgrade a policy rule from `draft` to `act`.
+## Browser action boundary
 
-## Shadow Mode
+Business browsing is not the same thing as WhatsApp Web transport.
 
-Shadow Mode runs classification, drafting, policy evaluation, and audit, but never calls the outbound WhatsApp sender. The result exposes `wouldAction` so real conversations can be reviewed before enabling automation.
+The browser action runtime supports:
 
-## Idempotency
-
-The current process keeps an in-memory set keyed by `tenantId:messageId`. A repeated webhook message is not processed twice. Claims are removed on orchestration failure so retries remain possible.
-
-For horizontal production deployment, replace the in-memory claim set with a durable atomic store such as Postgres `INSERT ... ON CONFLICT DO NOTHING` or Redis `SET NX` with a retention window.
-
-## BYOK
-
-Tenant files reference secret environment-variable names rather than containing secrets directly:
-
-```json
-{
-  "whatsapp": { "accessTokenEnv": "CLIENT_A_META_TOKEN" },
-  "ai": { "apiKeyEnv": "CLIENT_A_OPENAI_KEY" }
-}
+```text
+none
+agent-browser
+remote browser worker
 ```
 
-This is the first implementation of Bring Your Own Key. A production control plane should move secret values into a managed secret store and keep only secret references in tenant configuration.
+Browser tasks require policy-defined instructions and explicit domain allowlists. Raw customer message text is not interpolated into browser task templates.
 
-## Production upgrades
+## State ownership
 
-The next backend slice should replace the in-memory stores with durable repositories, add human takeover state, and introduce an allowlisted Action Gateway. The Action Gateway should never accept arbitrary URLs or arbitrary tool definitions from model output. A tenant administrator must register allowed actions first, and policy rules must authorize them explicitly.
+Supervisor:
+
+```text
+data/audit
+data/claims
+data/browser
+```
+
+WhatsApp Web worker:
+
+```text
+data/whatsapp-web/auth
+data/whatsapp-web/spool
+```
+
+The file-backed supervisor store is single-instance. Multi-replica deployment requires a shared atomic claim store and shared audit repository.
+
+## Future transport workers
+
+The current remote worker protocol makes these possible without changing the orchestration core:
+
+- a Go `whatsmeow` worker
+- a managed linked-device worker service
+- another WhatsApp bridge implementation with compatible inbound and send endpoints
+
+Any new worker must preserve authentication, session isolation, durable inbound delivery, and deterministic tenant mapping.

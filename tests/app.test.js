@@ -28,7 +28,8 @@ function deps() {
   };
   const tenantStore = {
     findById(id) { return id === 'demo' ? tenant : null; },
-    findByPhoneNumberId(id) { return id === 'phone-123' ? tenant : null; }
+    findByPhoneNumberId(id) { return id === 'phone-123' ? tenant : null; },
+    findByLinkedDeviceSessionId(id) { return id === 'demo-session' ? tenant : null; }
   };
   const orchestratorForTenant = () => ({
     async handle(message, currentTenant) {
@@ -41,7 +42,7 @@ function deps() {
       return { action: currentTenant.shadowMode ? 'shadow' : 'reply', wouldAction: 'reply' };
     }
   });
-  return { verifyToken: 'verify-me', appSecret: null, tenantStore, orchestratorForTenant, auditStore };
+  return { verifyToken: 'verify-me', appSecret: null, tenantStore, orchestratorForTenant, auditStore, linkedDeviceIngressToken: 'ingress-secret' };
 }
 
 test('GET /health returns service status', async () => {
@@ -113,5 +114,50 @@ test('duplicate WhatsApp webhook message id is not processed twice', async () =>
     assert.equal(secondBody.processed, 0);
     assert.equal(secondBody.duplicates, 1);
     assert.equal(d.auditStore.list('demo').length, 1);
+  });
+});
+
+
+test('linked-device ingress rejects requests without worker bearer token', async () => {
+  const d = deps();
+  await withServer(d, async (base) => {
+    const response = await fetch(`${base}/internal/transports/linked-device/message`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'demo-session', message: { id: 'm-linked', from: '20100@c.us', text: 'Hello', timestamp: 1, type: 'chat' } })
+    });
+    assert.equal(response.status, 401);
+    assert.equal(d.auditStore.list('demo').length, 0);
+  });
+});
+
+test('linked-device ingress processes direct text for tenant session and deduplicates it', async () => {
+  const d = deps();
+  await withServer(d, async (base) => {
+    const payload = { sessionId: 'demo-session', message: { id: 'm-linked', from: '20100@c.us', customerName: 'M', text: 'Hello', timestamp: 1, type: 'chat', fromMe: false, isGroup: false } };
+    const init = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ingress-secret' },
+      body: JSON.stringify(payload)
+    };
+    const first = await fetch(`${base}/internal/transports/linked-device/message`, init);
+    const second = await fetch(`${base}/internal/transports/linked-device/message`, init);
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).processed, 1);
+    assert.equal((await second.json()).duplicates, 1);
+    assert.equal(d.auditStore.list('demo').length, 1);
+  });
+});
+
+test('linked-device ingress ignores group messages unless tenant opts in', async () => {
+  const d = deps();
+  await withServer(d, async (base) => {
+    const response = await fetch(`${base}/internal/transports/linked-device/message`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ingress-secret' },
+      body: JSON.stringify({ sessionId: 'demo-session', message: { id: 'm-group', from: '123@g.us', text: 'Hello', timestamp: 1, type: 'chat', fromMe: false, isGroup: true } })
+    });
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).ignored, true);
+    assert.equal(d.auditStore.list('demo').length, 0);
   });
 });

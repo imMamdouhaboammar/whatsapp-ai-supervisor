@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { normalizeWhatsAppWebhook, validateMetaSignature, verifyWebhookChallenge } from './channels/whatsapp-cloud.js';
+import { normalizeLinkedDeviceInbound } from './channels/whatsapp-linked-device.js';
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -18,14 +20,63 @@ async function readRawBody(req, limit = 1_000_000) {
   return Buffer.concat(chunks);
 }
 
-export function createHttpServer({ verifyToken, appSecret, tenantStore, orchestratorForTenant, auditStore }) {
+function bearerMatches(req, expectedToken) {
+  if (!expectedToken) return false;
+  const actual = String(req.headers.authorization ?? '');
+  const expected = `Bearer ${expectedToken}`;
+  const a = Buffer.from(actual);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function createHttpServer({
+  verifyToken,
+  appSecret,
+  tenantStore,
+  orchestratorForTenant,
+  auditStore,
+  claimStore = null,
+  readiness = null,
+  linkedDeviceIngressToken = null
+}) {
   const claimedMessages = new Set();
+  const claims = claimStore ?? {
+    async claim(key) {
+      if (claimedMessages.has(key)) return false;
+      claimedMessages.add(key);
+      return true;
+    },
+    async release(key) { claimedMessages.delete(key); }
+  };
+
+  async function processMessage(message, tenant) {
+    const claimKey = `${tenant.id}:${message.id}`;
+    if (!(await claims.claim(claimKey))) return { processed: 0, duplicates: 1, failures: [] };
+    try {
+      await orchestratorForTenant(tenant).handle({ ...message, tenantId: tenant.id }, tenant);
+      return { processed: 1, duplicates: 0, failures: [] };
+    } catch (error) {
+      await claims.release(claimKey);
+      return {
+        processed: 0,
+        duplicates: 0,
+        failures: [{ messageId: message.id, error: error instanceof Error ? error.message : String(error) }]
+      };
+    }
+  }
+
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
 
       if (req.method === 'GET' && url.pathname === '/health') {
         return sendJson(res, 200, { status: 'ok', service: 'whatsapp-ai-supervisor' });
+      }
+
+      if (req.method === 'GET' && url.pathname === '/ready') {
+        if (!readiness) return sendJson(res, 200, { ready: true, status: 'ready' });
+        const report = await readiness();
+        return sendJson(res, report.ready ? 200 : 503, report);
       }
 
       if (req.method === 'GET' && url.pathname === '/webhooks/whatsapp') {
@@ -55,21 +106,29 @@ export function createHttpServer({ verifyToken, appSecret, tenantStore, orchestr
             failures.push({ messageId: message.id, error: 'unknown_phone_number_id' });
             continue;
           }
-          const claimKey = `${tenant.id}:${message.id}`;
-          if (claimedMessages.has(claimKey)) {
-            duplicates += 1;
-            continue;
-          }
-          claimedMessages.add(claimKey);
-          try {
-            await orchestratorForTenant(tenant).handle({ ...message, tenantId: tenant.id }, tenant);
-            processed += 1;
-          } catch (error) {
-            claimedMessages.delete(claimKey);
-            failures.push({ messageId: message.id, error: error instanceof Error ? error.message : String(error) });
-          }
+          const result = await processMessage(message, tenant);
+          processed += result.processed;
+          duplicates += result.duplicates;
+          failures.push(...result.failures);
         }
         return sendJson(res, 200, { received: inbound.length, processed, duplicates, failures });
+      }
+
+      if (req.method === 'POST' && url.pathname === '/internal/transports/linked-device/message') {
+        if (!linkedDeviceIngressToken) return sendJson(res, 404, { error: 'not_found' });
+        if (!bearerMatches(req, linkedDeviceIngressToken)) return sendJson(res, 401, { error: 'unauthorized' });
+
+        const raw = await readRawBody(req, 256_000);
+        const payload = JSON.parse(raw.toString('utf8') || '{}');
+        const sessionId = String(payload?.sessionId ?? '').trim();
+        if (!sessionId) return sendJson(res, 400, { error: 'session_id_required' });
+        const tenant = tenantStore.findByLinkedDeviceSessionId?.(sessionId);
+        if (!tenant) return sendJson(res, 404, { error: 'linked_device_session_not_found' });
+
+        const message = normalizeLinkedDeviceInbound(payload, { allowGroups: tenant.whatsapp?.allowGroups === true });
+        if (!message) return sendJson(res, 202, { ignored: true });
+        const result = await processMessage(message, tenant);
+        return sendJson(res, 200, { received: 1, ...result });
       }
 
       if (req.method === 'POST' && url.pathname === '/v1/simulate') {
@@ -103,6 +162,7 @@ export function createHttpServer({ verifyToken, appSecret, tenantStore, orchestr
     } catch (error) {
       if (error instanceof SyntaxError) return sendJson(res, 400, { error: 'invalid_json' });
       if (error instanceof Error && error.message === 'request_body_too_large') return sendJson(res, 413, { error: error.message });
+      if (error instanceof Error && error.message.startsWith('invalid_linked_device')) return sendJson(res, 400, { error: error.message });
       return sendJson(res, 500, { error: 'internal_error', detail: error instanceof Error ? error.message : String(error) });
     }
   });

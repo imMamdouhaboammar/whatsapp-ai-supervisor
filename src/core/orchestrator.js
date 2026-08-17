@@ -1,10 +1,17 @@
 import { evaluatePermission } from '../domain/permission-engine.js';
 
+function availableCapabilities(policy) {
+  return (policy?.rules ?? [])
+    .filter((rule) => rule.action === 'act' && rule.capability?.type)
+    .map((rule) => ({ intent: rule.intent, type: rule.capability.type }));
+}
+
 export class SupervisorOrchestrator {
-  constructor({ modelGateway, channelSender, auditStore, now = () => new Date().toISOString() }) {
+  constructor({ modelGateway, channelSender, auditStore, actionGateway = null, now = () => new Date().toISOString() }) {
     this.modelGateway = modelGateway;
     this.channelSender = channelSender;
     this.auditStore = auditStore;
+    this.actionGateway = actionGateway;
     this.now = now;
   }
 
@@ -12,7 +19,8 @@ export class SupervisorOrchestrator {
     const model = await this.modelGateway.decide(message, {
       route: tenant.ai?.route ?? 'standard',
       routes: tenant.ai?.routes ?? {},
-      businessContext: tenant.businessContext ?? null
+      businessContext: tenant.businessContext ?? null,
+      availableCapabilities: availableCapabilities(tenant.policy)
     });
 
     const permission = evaluatePermission(tenant.policy ?? {}, model);
@@ -30,6 +38,24 @@ export class SupervisorOrchestrator {
           replyToId: message.id
         });
         result = { action: 'reply', outbound, model, permission };
+      }
+    } else if (permission.action === 'act') {
+      if (!this.actionGateway) {
+        result = { action: 'human', reason: 'action_gateway_unavailable', model, permission };
+      } else {
+        const rule = (tenant.policy?.rules ?? []).find((candidate) => candidate.id === permission.matchedRuleId);
+        try {
+          const actionResult = await this.actionGateway.execute({ tenant, message, rule });
+          result = { action: 'act', actionResult, model, permission };
+        } catch (error) {
+          result = {
+            action: 'human',
+            reason: 'action_failed',
+            actionError: String(error?.message ?? error).slice(0, 300),
+            model,
+            permission
+          };
+        }
       }
     } else {
       result = { action: permission.action, model, permission };
