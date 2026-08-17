@@ -4,6 +4,7 @@ import { connectRealtime } from '../src/hooks/useRealtime';
 export async function runRealtimeTests() {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const events: Array<{ type: string; payload: unknown }> = [];
+  const connectionStates: boolean[] = [];
   const body = [
     'event: connected',
     'data: {"ready":true}',
@@ -26,6 +27,7 @@ export async function runRealtimeTests() {
     token: 'operator-secret',
     signal: controller.signal,
     fetchImpl,
+    onConnected: (connected) => connectionStates.push(connected),
     onEvent: (event) => events.push({ type: event.type, payload: event.payload })
   });
 
@@ -37,7 +39,8 @@ export async function runRealtimeTests() {
   assert.equal(headers.get('accept'), 'text/event-stream');
   assert.deepEqual(events, [
     { type: 'connected', payload: { ready: true } },
-    { type: 'message:inbound', payload: { tenantId: 'acme', text: 'hello' } },
-    { type: 'heartbeat', payload: {} }
+    { type: 'message:inbound', payload: { tenantId: 'acme', text: 'hello' } }
   ]);
+  assert.ok(connectionStates.length >= 2);
+  assert.equal(connectionStates.every(Boolean), true);
 }
