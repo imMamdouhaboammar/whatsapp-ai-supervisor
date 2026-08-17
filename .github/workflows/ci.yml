@@ -23,6 +23,33 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
 
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: supervisor
+          POSTGRES_PASSWORD: supervisor-test
+          POSTGRES_DB: supervisor_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U supervisor -d supervisor_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://supervisor:supervisor-test@127.0.0.1:5432/supervisor_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node tests/postgres-integration.mjs
+
   ui:
     runs-on: ubuntu-latest
     steps:
