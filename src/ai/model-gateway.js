@@ -71,7 +71,7 @@ export class ModelGateway {
     }
 
     return new Promise((resolve, reject) => {
-      const waiter = { resolve: null, reject: null, onAbort: null };
+      const waiter = { resolve: null, onAbort: null };
       waiter.onAbort = () => {
         const index = this.waiters.indexOf(waiter);
         if (index >= 0) this.waiters.splice(index, 1);
@@ -82,7 +82,6 @@ export class ModelGateway {
         this.active += 1;
         resolve(this.releaseHandle());
       };
-      waiter.reject = reject;
       signal.addEventListener('abort', waiter.onAbort, { once: true });
       this.waiters.push(waiter);
     });
@@ -94,13 +93,8 @@ export class ModelGateway {
       if (released) return;
       released = true;
       this.active = Math.max(0, this.active - 1);
-      while (this.waiters.length > 0) {
-        const waiter = this.waiters.shift();
-        if (waiter) {
-          waiter.resolve();
-          break;
-        }
-      }
+      const waiter = this.waiters.shift();
+      waiter?.resolve();
     };
   }
 
@@ -112,10 +106,8 @@ export class ModelGateway {
     const key = this.circuitKey(candidate);
     const state = this.circuits.get(key);
     if (!state?.openedAt) return true;
-
     if (this.now() - state.openedAt < this.circuitOpenMs) return false;
     if (state.halfOpen) return false;
-
     state.halfOpen = true;
     return true;
   }
@@ -160,9 +152,7 @@ export class ModelGateway {
         if (signal.aborted) throw deadlineError();
         const error = normalizeProviderError(rawError, { provider: candidate.provider });
         this.recordFailure(candidate, error);
-        if (!error.retryable || attempt >= this.maxRetriesPerCandidate || !this.canAttempt(candidate)) {
-          throw error;
-        }
+        if (!error.retryable || attempt >= this.maxRetriesPerCandidate || !this.canAttempt(candidate)) throw error;
         attempt += 1;
         if (this.retryDelayMs > 0) await this.sleep(this.retryDelayMs * attempt);
       }
@@ -187,7 +177,6 @@ export class ModelGateway {
         failures.push(new AiGatewayError('circuit_open', { provider: candidate.provider, retryable: false }));
         continue;
       }
-
       try {
         return await this.runCandidate(candidate, provider, message, routingConfig, signal);
       } catch (error) {
@@ -195,13 +184,13 @@ export class ModelGateway {
         failures.push(normalizeProviderError(error, { provider: candidate.provider }));
       }
     }
-
     throw allProvidersFailed(failures);
   }
 
   async decide(message, routingConfig) {
     const controller = new AbortController();
     let timer = null;
+    let release = null;
     const timeout = new Promise((_, reject) => {
       timer = this.setTimeoutImpl(() => {
         const error = deadlineError();
@@ -210,18 +199,11 @@ export class ModelGateway {
       }, this.deadlineMs);
     });
 
-    const work = (async () => {
-      const release = await this.acquire(controller.signal);
-      try {
-        return await this.execute(message, routingConfig, controller.signal);
-      } finally {
-        release();
-      }
-    })();
-
     try {
-      return await Promise.race([work, timeout]);
+      release = await Promise.race([this.acquire(controller.signal), timeout]);
+      return await Promise.race([this.execute(message, routingConfig, controller.signal), timeout]);
     } finally {
+      release?.();
       if (timer !== null) this.clearTimeoutImpl(timer);
     }
   }
