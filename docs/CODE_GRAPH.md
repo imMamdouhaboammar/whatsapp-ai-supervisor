@@ -408,7 +408,7 @@ None.
 | `ui/src/pages/OverviewPage.tsx` | ui | 89 | 6 | 1 | `OverviewPage` | — |
 | `ui/src/pages/SettingsPage.tsx` | ui | 22 | 3 | 1 | `SettingsPage` | — |
 | `ui/src/pages/TenantsPage.tsx` | ui | 180 | 7 | 1 | `TenantsPage` | — |
-| `ui/src/pages/WhatsAppPage.tsx` | ui | 33 | 5 | 1 | `WhatsAppPage` | — |
+| `ui/src/pages/WhatsAppPage.tsx` | ui | 49 | 5 | 1 | `WhatsAppPage` | — |
 | `ui/src/vite-env.d.ts` | ui | 2 | 0 | 0 | — | — |
 | `workers/whatsapp-web/src/config.js` | worker | 58 | 0 | 1 | `loadWorkerConfig` | `whatsapp-web-worker-config.test.js` |
 | `workers/whatsapp-web/src/index.js` | entry | 70 | 4 | 0 | — | — |

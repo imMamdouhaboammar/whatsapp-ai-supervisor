@@ -1858,7 +1858,7 @@
     {
       "id": "ui/src/pages/WhatsAppPage.tsx",
       "group": "ui",
-      "lines": 33,
+      "lines": 49,
       "exports": [
         {
           "kind": "function",
