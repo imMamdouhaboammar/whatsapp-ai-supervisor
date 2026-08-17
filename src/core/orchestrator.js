@@ -1,8 +1,9 @@
 import { evaluatePermission } from '../domain/permission-engine.js';
 const EXECUTION_MODES = new Set(['live', 'shadow', 'simulation']);
 function availableCapabilities(policy) {
+  const isV2 = Number(policy?.version) === 2;
   return (policy?.rules ?? [])
-    .filter((rule) => rule.action === 'act' && rule.capability?.type)
+    .filter((rule) => rule.action === 'act' && rule.capability?.type && (!isV2 || rule.effect === 'allow'))
     .map((rule) => ({ intent: rule.intent, type: rule.capability.type }));
 }
 function resolveExecutionMode(tenant, requestedMode = null) {
@@ -58,7 +59,7 @@ export class SupervisorOrchestrator {
       availableCapabilities: availableCapabilities(tenant.policy)
     });
 
-    const permission = evaluatePermission(tenant.policy ?? {}, model);
+    const permission = evaluatePermission(tenant.policy ?? {}, model, { channel: message.channel });
     let result;
 
     if (resolvedExecutionMode !== 'live') {

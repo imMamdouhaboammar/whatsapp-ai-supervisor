@@ -625,7 +625,7 @@
     {
       "id": "src/core/orchestrator.js",
       "group": "decision",
-      "lines": 118,
+      "lines": 119,
       "exports": [
         {
           "kind": "class",
@@ -718,7 +718,7 @@
     {
       "id": "src/domain/permission-engine.js",
       "group": "decision",
-      "lines": 57,
+      "lines": 193,
       "exports": [
         {
           "kind": "function",
@@ -733,6 +733,7 @@
       ],
       "external": [],
       "tests": [
+        "tests/permission-engine-v2.test.js",
         "tests/permission-engine.test.js"
       ]
     },

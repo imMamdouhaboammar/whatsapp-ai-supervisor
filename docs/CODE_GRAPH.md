@@ -367,10 +367,10 @@ None.
 | `src/core/file-audit-store.js` | decision | 49 | 0 | 1 | `FileAuditStore` | `file-stores.test.js` |
 | `src/core/file-claim-store.js` | decision | 41 | 0 | 1 | `FileClaimStore` | `file-stores.test.js` |
 | `src/core/file-conversation-store.js` | decision | 221 | 0 | 1 | `FileConversationStore` | `file-conversation-store.test.js` |
-| `src/core/orchestrator.js` | decision | 118 | 1 | 1 | `SupervisorOrchestrator` | `orchestrator-audit-reason.test.js`, `orchestrator.test.js` |
+| `src/core/orchestrator.js` | decision | 119 | 1 | 1 | `SupervisorOrchestrator` | `orchestrator-audit-reason.test.js`, `orchestrator.test.js` |
 | `src/core/tenant-store.js` | decision | 172 | 1 | 1 | `InMemoryTenantStore` | `tenant-store-crud.test.js`, `tenant-store-linked-device.test.js` |
 | `src/domain/domain-event.js` | decision | 136 | 0 | 4 | `DOMAIN_EVENT_SCHEMA_VERSION`, `DOMAIN_ACTOR_TYPES`, `DOMAIN_EVENT_TYPES`, `assertDomainEvent`, `createDomainEvent`, `deriveDomainEvent` | `domain-event.test.js`, `postgres-domain-event-store.test.js`, `postgres-integration.mjs`, `realtime-domain-events.test.js` |
-| `src/domain/permission-engine.js` | decision | 57 | 1 | 1 | `evaluatePermission` | `permission-engine.test.js` |
+| `src/domain/permission-engine.js` | decision | 193 | 1 | 1 | `evaluatePermission` | `permission-engine-v2.test.js`, `permission-engine.test.js` |
 | `src/domain/types.js` | decision | 9 | 0 | 1 | `AUTONOMY_ACTIONS`, `assertAutonomyAction` | — |
 | `src/jobs/durable-inbound-runtime.js` | other | 32 | 2 | 1 | `createInboundProcessingRuntime` | `durable-inbound-runtime.test.js` |
 | `src/jobs/durable-job-worker.js` | other | 63 | 0 | 1 | `DurableJobWorker` | `durable-job-worker.test.js` |
