@@ -81,6 +81,7 @@ export function createHttpServer({
   auditStore,
   claimStore = null,
   domainEventStore = null,
+  jobQueue = null,
   readiness = null,
   linkedDeviceIngressToken = null,
   managementToken = null,
@@ -99,9 +100,38 @@ export function createHttpServer({
     async release(key) { claimedMessages.delete(key); }
   };
 
+  async function processDecision(normalizedMessage, tenant, inboundDomainEvent) {
+    if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
+      const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
+      const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
+      const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
+      auditStore.append({
+        id: crypto.randomUUID(),
+        tenantId: tenant.id,
+        messageId: normalizedMessage.id,
+        customerId: normalizedMessage.customerId,
+        channel: normalizedMessage.channel,
+        at: decisionDomainEvent.occurredAt,
+        model: null,
+        permission: result.permission,
+        result: { action: 'human', reason: 'human_takeover', wouldAction: null }
+      });
+      conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
+      sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
+      return result;
+    }
+
+    const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
+    const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
+    const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
+    conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
+    sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
+    return result;
+  }
+
   async function processMessage(message, tenant, connectorId) {
     const claimKey = `${tenant.id}:${message.id}`;
-    if (!(await claims.claim(claimKey))) return { processed: 0, duplicates: 1, failures: [] };
+    if (!(await claims.claim(claimKey))) return { processed: 0, queued: 0, duplicates: 1, failures: [] };
     const normalizedMessage = { ...message, tenantId: tenant.id };
     const attemptedInboundEvent = createInboundDomainEvent(normalizedMessage, tenant, connectorId);
     try {
@@ -109,36 +139,25 @@ export function createHttpServer({
       conversationStore?.recordInbound(normalizedMessage, inboundDomainEvent);
       sseBroadcaster?.broadcastDomainEvent?.(inboundDomainEvent);
 
-      if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
-        const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
-        const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
-        const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
-        auditStore.append({
-          id: crypto.randomUUID(),
+      if (jobQueue) {
+        const idempotencyRoot = inboundDomainEvent.idempotencyKey ?? `${tenant.id}:${normalizedMessage.id}`;
+        await jobQueue.enqueue({
           tenantId: tenant.id,
-          messageId: normalizedMessage.id,
-          customerId: normalizedMessage.customerId,
-          channel: normalizedMessage.channel,
-          at: decisionDomainEvent.occurredAt,
-          model: null,
-          permission: result.permission,
-          result: { action: 'human', reason: 'human_takeover', wouldAction: null }
+          type: 'process_inbound',
+          payload: { message: normalizedMessage, inboundEvent: inboundDomainEvent },
+          idempotencyKey: `${idempotencyRoot}:process_inbound`,
+          maxAttempts: 5
         });
-        conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
-        sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
-        return { processed: 1, duplicates: 0, failures: [] };
+        return { processed: 1, queued: 1, duplicates: 0, failures: [] };
       }
 
-      const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
-      const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
-      const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
-      conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
-      sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
-      return { processed: 1, duplicates: 0, failures: [] };
+      await processDecision(normalizedMessage, tenant, inboundDomainEvent);
+      return { processed: 1, queued: 0, duplicates: 0, failures: [] };
     } catch {
       await claims.release(claimKey);
       return {
         processed: 0,
+        queued: 0,
         duplicates: 0,
         failures: [{ messageId: message.id, error: 'processing_failed' }]
       };
@@ -182,6 +201,7 @@ export function createHttpServer({
         const payload = JSON.parse(raw.toString('utf8') || '{}');
         const inbound = normalizeWhatsAppWebhook(payload);
         let processed = 0;
+        let queued = 0;
         let duplicates = 0;
         const failures = [];
         for (const message of inbound) {
@@ -192,10 +212,13 @@ export function createHttpServer({
           }
           const result = await processMessage(message, tenant, 'whatsapp-cloud');
           processed += result.processed;
+          queued += result.queued;
           duplicates += result.duplicates;
           failures.push(...result.failures);
         }
-        return sendJson(res, 200, { received: inbound.length, processed, duplicates, failures });
+        const body = { received: inbound.length, processed, duplicates, failures };
+        if (jobQueue) body.queued = queued;
+        return sendJson(res, 200, body);
       }
 
       if (req.method === 'POST' && url.pathname === '/internal/transports/linked-device/message') {
