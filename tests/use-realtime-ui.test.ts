@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { connectRealtime } from '../ui/src/hooks/useRealtime';
+import { connectRealtime, runRealtimeLoop } from '../ui/src/hooks/useRealtime';
 
 export async function runRealtimeTests() {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -43,4 +43,21 @@ export async function runRealtimeTests() {
   ]);
   assert.ok(connectionStates.length >= 2);
   assert.equal(connectionStates.every(Boolean), true);
+
+  let attempts = 0;
+  const loopController = new AbortController();
+  const loopStates: boolean[] = [];
+  await runRealtimeLoop({
+    signal: loopController.signal,
+    tokenProvider: () => 'operator-secret',
+    onConnected: (connected) => loopStates.push(connected),
+    retryDelayMs: 0,
+    connectImpl: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('temporary_failure');
+      loopController.abort();
+    }
+  });
+  assert.equal(attempts, 2);
+  assert.deepEqual(loopStates, [false]);
 }
