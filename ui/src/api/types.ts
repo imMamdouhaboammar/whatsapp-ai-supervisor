@@ -1,5 +1,6 @@
 export type TransportMode = 'cloud' | 'linked-device';
 export type ConversationControl = 'ai' | 'human';
+export type ConnectorState = 'disabled' | 'disconnected' | 'connecting' | 'qr_required' | 'ready' | 'degraded' | 'failed';
 
 export interface WhatsAppNumber {
   id: string;
@@ -52,13 +53,16 @@ export type TenantUpdatePayload = Partial<TenantCreatePayload>;
 export interface WhatsAppSession {
   tenantId: string;
   mode: TransportMode;
-  status: string;
+  state: ConnectorState;
+  /** Compatibility alias. Contains the same canonical value as state. */
+  status: ConnectorState;
+  reasonCode: string;
+  observedAt: string;
   phoneNumberId?: string | null;
   sessionId?: string | null;
   qr?: string | null;
   pairingCode?: string | null;
   reconnectAttempt?: number;
-  lastError?: string | null;
 }
 
 export interface AuditEvent {
@@ -142,4 +146,3 @@ export interface RuntimeInfo {
   managementAuth: boolean;
   readiness: Record<string, unknown> & { ready?: boolean; status?: string };
 }
-
