@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SupervisorOrchestrator } from '../src/core/orchestrator.js';
 import { InMemoryAuditStore } from '../src/core/audit-store.js';
 
-function setup({ shadowMode = false, modelDecision, rules, actionGateway = null }) {
+function setup({ shadowMode = false, modelDecision, rules, actionGateway = null, policy = null }) {
   const sent = [];
   const gatewayCalls = [];
   const gateway = { async decide(message, config) { gatewayCalls.push({ message, config }); return modelDecision; } };
@@ -14,7 +14,7 @@ function setup({ shadowMode = false, modelDecision, rules, actionGateway = null 
     shadowMode,
     businessContext: { name: 'Demo Co' },
     ai: { route: 'standard', routes: { standard: [{ provider: 'fake', model: 'fake-model' }] } },
-    policy: { minConfidence: 0.8, defaultAction: 'human', rules }
+    policy: policy ?? { minConfidence: 0.8, defaultAction: 'human', rules }
   };
   const orchestrator = new SupervisorOrchestrator({ modelGateway: gateway, channelSender: sender, auditStore: audit, actionGateway });
   return { orchestrator, tenant, sent, audit, gatewayCalls };
@@ -52,6 +52,66 @@ test('model sees only non-sensitive capability metadata from policy', async () =
   assert.deepEqual(gatewayCalls[0].config.availableCapabilities, [{ intent: 'order_status', type: 'browser' }]);
   assert.equal(JSON.stringify(gatewayCalls[0].config).includes('Secret internal task'), false);
   assert.equal(JSON.stringify(gatewayCalls[0].config).includes('portal.example.com'), false);
+});
+
+test('policy v2 receives channel context and allows a channel-constrained action', async () => {
+  const calls = [];
+  const actionGateway = { async execute(input) { calls.push(input); return { ok: true }; } };
+  const policy = {
+    version: 2,
+    id: 'v2',
+    minConfidence: 0.8,
+    defaultEffect: 'deny',
+    rules: [{
+      id: 'order',
+      intent: 'order_status',
+      effect: 'allow',
+      action: 'act',
+      constraints: { channels: ['whatsapp'] },
+      capability: { type: 'browser', task: 'Check order', allowedDomains: ['portal.example.com'] }
+    }]
+  };
+  const { orchestrator, tenant } = setup({
+    modelDecision: { intent: 'order_status', confidence: 0.97, reply: '', requestedAction: 'act' },
+    policy,
+    actionGateway
+  });
+
+  const result = await orchestrator.handle(inbound, tenant);
+  assert.equal(result.action, 'act');
+  assert.equal(calls.length, 1);
+  assert.equal(result.permission.policyVersion, 2);
+});
+
+test('approval-required v2 capability is not advertised as automatically executable and never executes live', async () => {
+  let actionCalls = 0;
+  const actionGateway = { async execute() { actionCalls += 1; return { ok: true }; } };
+  const policy = {
+    version: 2,
+    id: 'v2',
+    minConfidence: 0.8,
+    defaultEffect: 'deny',
+    rules: [{
+      id: 'refund',
+      intent: 'refund',
+      effect: 'require_approval',
+      action: 'act',
+      capability: { type: 'browser', task: 'Issue refund', allowedDomains: ['billing.example.com'] }
+    }]
+  };
+  const { orchestrator, tenant, gatewayCalls, sent } = setup({
+    modelDecision: { intent: 'refund', confidence: 0.99, reply: 'I can help', requestedAction: 'act' },
+    policy,
+    actionGateway
+  });
+
+  const result = await orchestrator.handle(inbound, tenant);
+  assert.deepEqual(gatewayCalls[0].config.availableCapabilities, []);
+  assert.equal(result.action, 'human');
+  assert.equal(result.permission.requiresApproval, true);
+  assert.equal(result.permission.intendedAction, 'act');
+  assert.equal(actionCalls, 0);
+  assert.equal(sent.length, 0);
 });
 
 test('automatic reply sends only after deterministic policy permits it', async () => {
