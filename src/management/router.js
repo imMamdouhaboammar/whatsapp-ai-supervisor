@@ -251,9 +251,9 @@ export function createManagementRouter({
       if (error?.message === 'request_body_too_large') return sendJson(res, 413, { error: error.message });
       if (error?.message === 'invalid_conversation_control_mode') return sendJson(res, 400, { error: error.message });
       const statusCode = Number(error?.statusCode || error?.status) || 500;
+      if (statusCode >= 500) return sendJson(res, 500, { error: 'management_internal_error' });
       return sendJson(res, statusCode, {
-        error: error?.message || 'management_internal_error',
-        detail: error?.statusCode ? undefined : String(error?.message ?? error)
+        error: error?.message || 'management_request_failed'
       });
     }
   };
