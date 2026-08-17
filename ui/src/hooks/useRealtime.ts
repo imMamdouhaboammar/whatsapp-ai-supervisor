@@ -35,14 +35,24 @@ function parseSseBlock(block: string) {
   return { type, data: data.join('\n') };
 }
 
-function sleep(milliseconds: number, signal: AbortSignal) {
+export function waitForRetry(milliseconds: number, signal: AbortSignal) {
   if (milliseconds <= 0 || signal.aborted) return Promise.resolve();
+
   return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener('abort', () => {
-      clearTimeout(timer);
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
       resolve();
-    }, { once: true });
+    };
+    const onAbort = () => finish();
+
+    timer = setTimeout(finish, milliseconds);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) finish();
   });
 }
 
@@ -95,7 +105,7 @@ export async function runRealtimeLoop({
   onEvent,
   retryDelayMs = 3000,
   connectImpl = connectRealtime,
-  sleepImpl = sleep
+  sleepImpl = waitForRetry
 }: RealtimeLoopOptions) {
   while (!signal.aborted) {
     try {
