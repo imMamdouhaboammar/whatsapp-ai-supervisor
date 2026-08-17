@@ -1360,7 +1360,9 @@
       "external": [
         "react"
       ],
-      "tests": []
+      "tests": [
+        "tests/use-realtime-ui.test.ts"
+      ]
     },
     {
       "id": "ui/src/main.tsx",
