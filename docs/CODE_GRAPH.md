@@ -324,7 +324,7 @@ None.
 | `src/channels/whatsapp-linked-device.js` | channel | 84 | 0 | 6 | `whatsappTransportMode`, `normalizeLinkedDeviceInbound`, `WhatsAppLinkedDeviceSender` | `linked-device-channel.test.js`, `whatsapp-sender-factory.test.js` |
 | `src/channels/whatsapp-sender-factory.js` | channel | 26 | 2 | 1 | `createWhatsAppSender` | `whatsapp-sender-factory.test.js` |
 | `src/cli.js` | entry | 79 | 4 | 0 | `main` | — |
-| `src/config.js` | runtime | 104 | 1 | 1 | `loadConfig`, `resolveTenantSecret` | `config-browser.test.js` |
+| `src/config.js` | runtime | 122 | 1 | 1 | `loadConfig`, `resolveTenantSecret` | `config-browser.test.js` |
 | `src/core/audit-store.js` | decision | 16 | 0 | 0 | `InMemoryAuditStore` | `app.test.js`, `orchestrator-audit-reason.test.js`, `orchestrator.test.js` |
 | `src/core/file-audit-store.js` | decision | 49 | 0 | 1 | `FileAuditStore` | `file-stores.test.js` |
 | `src/core/file-claim-store.js` | decision | 41 | 0 | 1 | `FileClaimStore` | `file-stores.test.js` |

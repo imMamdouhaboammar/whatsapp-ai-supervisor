@@ -446,7 +446,7 @@
     {
       "id": "src/config.js",
       "group": "runtime",
-      "lines": 104,
+      "lines": 122,
       "exports": [
         {
           "kind": "function",
