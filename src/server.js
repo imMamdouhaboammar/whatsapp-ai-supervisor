@@ -124,8 +124,8 @@ const managementRouter = createManagementRouter({
   readiness,
   linkedDeviceStatus,
   manualSend: (tenant, message) => senderForTenant(tenant).sendText(message),
-  moderatorEngine,
-  sseBroadcaster,
+  onTenantChanged: (tenantId) => { runtimes.delete(tenantId); manualSenders.delete(tenantId); },
+  moderatorEngine, sseBroadcaster,
   runtimeSummary: () => ({
     service: 'whatsapp-ai-supervisor',
     ui: 'material3-operator',
