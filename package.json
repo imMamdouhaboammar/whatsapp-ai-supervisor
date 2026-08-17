@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
-    "test": "node --test",
-    "check": "node --check src/server.js && node --test",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check src/server.js && node --test tests/*.test.js",
     "graph": "node tools/code-graph.mjs",
     "graph:check": "node tools/code-graph.mjs --check",
     "init": "node src/cli.js init",
