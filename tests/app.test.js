@@ -117,7 +117,6 @@ test('duplicate WhatsApp webhook message id is not processed twice', async () =>
   });
 });
 
-
 test('linked-device ingress rejects requests without worker bearer token', async () => {
   const d = deps();
   await withServer(d, async (base) => {
@@ -199,5 +198,27 @@ test('unexpected internal errors are not returned to clients', async () => {
     const body = await response.json();
     assert.deepEqual(body, { error: 'internal_error' });
     assert.equal(JSON.stringify(body).includes('private-file'), false);
+  });
+});
+
+test('webhook processing failures do not expose internal exception details', async () => {
+  const d = deps();
+  d.orchestratorForTenant = () => ({ async handle() { throw new Error('provider-secret:/internal/model/error'); } });
+  await withServer(d, async (base) => {
+    const response = await fetch(`${base}/webhooks/whatsapp`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'whatsapp_business_account',
+        entry: [{ changes: [{ value: {
+          metadata: { phone_number_id: 'phone-123' },
+          messages: [{ id: 'wamid.failure', from: '20100', timestamp: '1720000000', type: 'text', text: { body: 'Hello' } }]
+        } }] }]
+      })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.processed, 0);
+    assert.deepEqual(body.failures, [{ messageId: 'wamid.failure', error: 'processing_failed' }]);
+    assert.equal(JSON.stringify(body).includes('provider-secret'), false);
   });
 });
