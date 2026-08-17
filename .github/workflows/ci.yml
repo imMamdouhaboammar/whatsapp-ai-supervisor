@@ -30,9 +30,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci --prefix ui --ignore-scripts
+      - run: npm install --prefix ui --no-audit --no-fund
       - run: npm run --prefix ui check
 
   docker:
