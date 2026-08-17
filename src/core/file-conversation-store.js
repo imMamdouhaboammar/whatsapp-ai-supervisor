@@ -22,6 +22,17 @@ function lineageFields(domainEvent) {
   };
 }
 
+function decisionArguments(domainEventOrAt, atOverride) {
+  if (typeof domainEventOrAt === 'string') {
+    return { domainEvent: null, at: domainEventOrAt };
+  }
+  const domainEvent = domainEventOrAt ?? null;
+  return {
+    domainEvent,
+    at: atOverride ?? domainEvent?.occurredAt ?? new Date().toISOString()
+  };
+}
+
 export class FileConversationStore {
   constructor({ dataDir }) {
     this.dir = join(dataDir, 'conversations');
@@ -53,7 +64,8 @@ export class FileConversationStore {
     });
   }
 
-  recordDecision(message, result, at = new Date().toISOString()) {
+  recordDecision(message, result, domainEventOrAt = null, atOverride = null) {
+    const { domainEvent, at } = decisionArguments(domainEventOrAt, atOverride);
     const decisionEvent = this.appendEvent({
       id: crypto.randomUUID(),
       tenantId: message.tenantId,
@@ -69,7 +81,8 @@ export class FileConversationStore {
       thinking: result.model?.thinking ?? null,
       proactiveOffer: result.model?.proactiveOffer ?? null,
       modelName: result.model?.model ?? null,
-      provider: result.model?.provider ?? null
+      provider: result.model?.provider ?? null,
+      ...lineageFields(domainEvent)
     });
 
     if (result.action === 'reply' && result.model?.reply) {
@@ -165,26 +178,30 @@ export class FileConversationStore {
       const thread = threads.get(event.customerId);
       thread.customerName = event.customerName || thread.customerName;
       thread.lastActivityAt = event.at || thread.lastActivityAt;
+
       if (event.type === 'control') {
         thread.control = event.mode;
-      } else {
-        thread.messages.push({
-          id: event.id,
-          direction: event.direction,
-          text: event.text,
-          at: event.at,
-          action: event.action ?? null,
-          intent: event.intent ?? null,
-          confidence: event.confidence ?? null,
-          thinking: event.thinking ?? null,
-          proactiveOffer: event.proactiveOffer ?? null,
-          modelName: event.modelName ?? null,
-          provider: event.provider ?? null
-        });
-        if (event.action) thread.lastAction = event.action;
-        if (event.intent) thread.lastIntent = event.intent;
-        if (event.confidence !== null && event.confidence !== undefined) thread.lastConfidence = event.confidence;
+        continue;
       }
+
+      if (event.action) thread.lastAction = event.action;
+      if (event.intent) thread.lastIntent = event.intent;
+      if (event.confidence !== null && event.confidence !== undefined) thread.lastConfidence = event.confidence;
+      if (event.type === 'decision') continue;
+
+      thread.messages.push({
+        id: event.id,
+        direction: event.direction,
+        text: event.text,
+        at: event.at,
+        action: event.action ?? null,
+        intent: event.intent ?? null,
+        confidence: event.confidence ?? null,
+        thinking: event.thinking ?? null,
+        proactiveOffer: event.proactiveOffer ?? null,
+        modelName: event.modelName ?? null,
+        provider: event.provider ?? null
+      });
     }
 
     return [...threads.values()]
