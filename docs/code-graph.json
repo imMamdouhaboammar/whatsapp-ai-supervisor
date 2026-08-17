@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
   "moduleCount": 65,
-  "edgeCount": 111,
+  "edgeCount": 112,
   "cycles": [],
   "nodes": [
     {
@@ -850,7 +850,9 @@
         }
       ],
       "imports": [],
-      "importedBy": [],
+      "importedBy": [
+        "src/server.js"
+      ],
       "external": [],
       "tests": [
         "tests/tenant-runtime-cache.test.js"
@@ -859,7 +861,7 @@
     {
       "id": "src/server.js",
       "group": "entry",
-      "lines": 166,
+      "lines": 154,
       "exports": [],
       "imports": [
         "src/actions/action-gateway.js",
@@ -880,7 +882,8 @@
         "src/management/linked-device-status.js",
         "src/management/router.js",
         "src/realtime/sse-broadcaster.js",
-        "src/runtime/readiness.js"
+        "src/runtime/readiness.js",
+        "src/runtime/tenant-runtime-cache.js"
       ],
       "importedBy": [
         "src/cli.js"
@@ -1761,6 +1764,10 @@
     {
       "from": "src/server.js",
       "to": "src/runtime/readiness.js"
+    },
+    {
+      "from": "src/server.js",
+      "to": "src/runtime/tenant-runtime-cache.js"
     },
     {
       "from": "src/server.js",
