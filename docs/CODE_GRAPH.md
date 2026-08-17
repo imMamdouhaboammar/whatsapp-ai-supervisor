@@ -335,7 +335,7 @@ None.
 | `src/domain/types.js` | decision | 9 | 0 | 1 | `AUTONOMY_ACTIONS`, `assertAutonomyAction` | — |
 | `src/management/dashboard.js` | http | 90 | 1 | 1 | `sanitizeTenant`, `recentAuditEvents`, `buildOverview`, `buildActions` | `management-dashboard.test.js` |
 | `src/management/linked-device-status.js` | http | 111 | 1 | 1 | `createLinkedDeviceStatusProvider` | — |
-| `src/management/router.js` | http | 262 | 1 | 1 | `createManagementRouter` | `management-router.test.js` |
+| `src/management/router.js` | http | 255 | 1 | 1 | `createManagementRouter` | `management-router.test.js` |
 | `src/management/static-ui.js` | http | 59 | 0 | 1 | `serveStaticUi` | `static-ui.test.js` |
 | `src/realtime/sse-broadcaster.js` | runtime | 76 | 0 | 1 | `SseBroadcaster` | `sse-broadcaster.test.js` |
 | `src/runtime/doctor.js` | runtime | 160 | 0 | 1 | `runDoctor` | `runtime-cli.test.js` |
