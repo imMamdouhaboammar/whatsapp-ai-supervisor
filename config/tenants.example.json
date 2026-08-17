@@ -1,0 +1,46 @@
+[
+  {
+    "id": "demo-business",
+    "phoneNumberId": "YOUR_META_PHONE_NUMBER_ID",
+    "shadowMode": true,
+    "businessContext": {
+      "name": "Demo Business",
+      "language": "Arabic and English",
+      "facts": [
+        "Working hours are 9:00 to 17:00 Sunday through Thursday",
+        "Never invent prices, discounts, delivery dates, or refund approvals"
+      ]
+    },
+    "whatsapp": {
+      "accessTokenEnv": "DEMO_META_ACCESS_TOKEN"
+    },
+    "ai": {
+      "apiKeyEnv": "DEMO_OPENAI_API_KEY",
+      "route": "standard",
+      "routes": {
+        "fast": [
+          { "provider": "openai", "model": "gpt-5.6" }
+        ],
+        "standard": [
+          { "provider": "openai", "model": "gpt-5.6" }
+        ],
+        "critical": [
+          { "provider": "openai", "model": "gpt-5.6" }
+        ]
+      }
+    },
+    "policy": {
+      "minConfidence": 0.82,
+      "defaultAction": "human",
+      "rules": [
+        { "id": "faq-auto", "intent": "faq", "action": "reply" },
+        { "id": "hours-auto", "intent": "working_hours", "action": "reply" },
+        { "id": "location-auto", "intent": "location", "action": "reply" },
+        { "id": "pricing-draft", "intent": "pricing", "action": "draft" },
+        { "id": "complaint-human", "intent": "complaint", "action": "human" },
+        { "id": "refund-human", "intent": "refund", "action": "human" },
+        { "id": "legal-human", "intent": "legal", "action": "human" }
+      ]
+    }
+  }
+]
