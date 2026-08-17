@@ -73,6 +73,10 @@ export function loadConfig() {
     port: Number(process.env.PORT ?? 3000),
     host: process.env.HOST ?? '127.0.0.1',
     dataDir: resolve(process.env.DATA_DIR ?? './data'),
+    uiDir: resolve(process.env.UI_DIR ?? './ui/dist'),
+    management: {
+      token: process.env.MANAGEMENT_TOKEN || null
+    },
     meta,
     linkedDevice: {
       enabled: hasLinkedDeviceTenants,

@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { normalizeWhatsAppWebhook, validateMetaSignature, verifyWebhookChallenge } from './channels/whatsapp-cloud.js';
 import { normalizeLinkedDeviceInbound } from './channels/whatsapp-linked-device.js';
+import { serveStaticUi } from './management/static-ui.js';
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -37,7 +38,10 @@ export function createHttpServer({
   auditStore,
   claimStore = null,
   readiness = null,
-  linkedDeviceIngressToken = null
+  linkedDeviceIngressToken = null,
+  conversationStore = null,
+  managementRouter = null,
+  uiDir = null
 }) {
   const claimedMessages = new Set();
   const claims = claimStore ?? {
@@ -52,8 +56,30 @@ export function createHttpServer({
   async function processMessage(message, tenant) {
     const claimKey = `${tenant.id}:${message.id}`;
     if (!(await claims.claim(claimKey))) return { processed: 0, duplicates: 1, failures: [] };
+    const normalizedMessage = { ...message, tenantId: tenant.id };
     try {
-      await orchestratorForTenant(tenant).handle({ ...message, tenantId: tenant.id }, tenant);
+      conversationStore?.recordInbound(normalizedMessage);
+
+      if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
+        const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
+        const at = new Date().toISOString();
+        auditStore.append({
+          id: crypto.randomUUID(),
+          tenantId: tenant.id,
+          messageId: normalizedMessage.id,
+          customerId: normalizedMessage.customerId,
+          channel: normalizedMessage.channel,
+          at,
+          model: null,
+          permission: result.permission,
+          result: { action: 'human', reason: 'human_takeover', wouldAction: null }
+        });
+        conversationStore?.recordDecision(normalizedMessage, result, at);
+        return { processed: 1, duplicates: 0, failures: [] };
+      }
+
+      const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
+      conversationStore?.recordDecision(normalizedMessage, result);
       return { processed: 1, duplicates: 0, failures: [] };
     } catch (error) {
       await claims.release(claimKey);
@@ -68,6 +94,10 @@ export function createHttpServer({
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
+
+      if (managementRouter && url.pathname.startsWith('/api/management/')) {
+        return await managementRouter(req, res, url);
+      }
 
       if (req.method === 'GET' && url.pathname === '/health') {
         return sendJson(res, 200, { status: 'ok', service: 'whatsapp-ai-supervisor' });
@@ -158,6 +188,7 @@ export function createHttpServer({
         return sendJson(res, 200, { events: auditStore.list(tenantId) });
       }
 
+      if (serveStaticUi(req, res, { uiDir })) return;
       return sendJson(res, 404, { error: 'not_found' });
     } catch (error) {
       if (error instanceof SyntaxError) return sendJson(res, 400, { error: 'invalid_json' });

@@ -1,16 +1,26 @@
+FROM node:22-bookworm-slim AS ui-build
+
+WORKDIR /app/ui
+COPY ui/package.json ./package.json
+RUN npm install --no-audit --no-fund
+COPY ui ./
+RUN npm run build
+
 FROM node:22-bookworm-slim AS supervisor
 
 ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0 \
     DATA_DIR=/app/data \
-    TENANTS_FILE=/app/config/tenants.json
+    TENANTS_FILE=/app/config/tenants.json \
+    UI_DIR=/app/ui/dist
 
 WORKDIR /app
 COPY package.json ./
 COPY src ./src
 COPY config ./config
-RUN mkdir -p /app/data/audit /app/data/claims /app/data/browser /app/data/whatsapp-web
+COPY --from=ui-build /app/ui/dist ./ui/dist
+RUN mkdir -p /app/data/audit /app/data/claims /app/data/browser /app/data/whatsapp-web /app/data/conversations
 
 EXPOSE 3000
 CMD ["node", "src/cli.js", "start"]
