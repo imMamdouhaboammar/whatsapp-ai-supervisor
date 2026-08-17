@@ -3,7 +3,7 @@ name: refresh-code-graph
 on:
   push:
     branches:
-      - feat/domain-event-contracts
+      - fix/domain-event-completion
 
 permissions:
   contents: write
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: feat/domain-event-contracts
+          ref: fix/domain-event-completion
           fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
@@ -31,4 +31,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs: refresh code graph"
-          git push origin HEAD:feat/domain-event-contracts
+          git push origin HEAD:fix/domain-event-completion
