@@ -31,6 +31,7 @@ async function configEnv(overrides = {}) {
     TENANTS_FILE: tenantsFile,
     META_WEBHOOK_VERIFY_TOKEN: 'verify',
     META_APP_SECRET: 'secret',
+    META_GRAPH_VERSION: 'v99.0',
     DATA_DIR: join(dir, 'data'),
     STORAGE_BACKEND: undefined,
     DATABASE_URL: undefined,
