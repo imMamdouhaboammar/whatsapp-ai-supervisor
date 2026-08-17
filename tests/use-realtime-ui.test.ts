@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { connectRealtime, runRealtimeLoop } from '../ui/src/hooks/useRealtime';
+import { connectRealtime, runRealtimeLoop, waitForRetry } from '../ui/src/hooks/useRealtime';
 
 export async function runRealtimeTests() {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -60,4 +60,15 @@ export async function runRealtimeTests() {
   });
   assert.equal(attempts, 2);
   assert.deepEqual(loopStates, [false]);
+
+  let added = 0;
+  let removed = 0;
+  const fakeSignal = {
+    aborted: false,
+    addEventListener() { added += 1; },
+    removeEventListener() { removed += 1; }
+  } as unknown as AbortSignal;
+  await waitForRetry(1, fakeSignal);
+  assert.equal(added, 1);
+  assert.equal(removed, 1);
 }
