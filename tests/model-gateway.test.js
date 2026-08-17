@@ -50,9 +50,9 @@ test('falls back to next provider when primary provider fails', async () => {
   assert.equal(backup.calls.length, 1);
 });
 
-test('throws aggregate error when all configured providers fail', async () => {
-  const one = new FakeProvider('one', async () => { throw new Error('one down'); });
-  const two = new FakeProvider('two', async () => { throw new Error('two down'); });
+test('throws redacted classified error when all configured providers fail', async () => {
+  const one = new FakeProvider('one', async () => { throw new Error('one private failure'); });
+  const two = new FakeProvider('two', async () => { throw new Error('two private failure'); });
   const gateway = new ModelGateway({ providers: { one, two } });
 
   await assert.rejects(
@@ -63,6 +63,11 @@ test('throws aggregate error when all configured providers fail', async () => {
         { provider: 'two', model: 'b' }
       ] }
     }),
-    /All model providers failed/
+    (error) => {
+      assert.equal(error.code, 'all_providers_failed');
+      assert.equal(error.message, 'All configured AI providers failed');
+      assert.equal(JSON.stringify(error).includes('private failure'), false);
+      return true;
+    }
   );
 });
