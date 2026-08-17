@@ -1,8 +1,24 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { navItems, type RouteKey } from '../app/nav';
+import '../styles/mobile-menu.css';
 
 export function Shell({ route, onRoute, onRefresh, children }: { route: RouteKey; onRoute: (route: RouteKey) => void; onRefresh: () => void; children: ReactNode }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [route]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileMenuOpen(false);
+    };
+    addEventListener('keydown', onKeyDown);
+    return () => removeEventListener('keydown', onKeyDown);
+  }, [mobileMenuOpen]);
+
   return (
     <div className="shell">
       <aside className="nav-drawer">
@@ -21,8 +37,11 @@ export function Shell({ route, onRoute, onRefresh, children }: { route: RouteKey
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <div><div className="topbar-title">{navItems.find((item) => item.key === route)?.label}</div><div className="topbar-subtitle">Operator console</div></div>
-          <button className="icon-button" onClick={onRefresh} title="Refresh"><Icon name="refresh" /></button>
+          <div className="topbar-leading">
+            <button className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation menu"><Icon name="menu" /></button>
+            <div><div className="topbar-title">{navItems.find((item) => item.key === route)?.label}</div><div className="topbar-subtitle">Operator console</div></div>
+          </div>
+          <button className="icon-button" onClick={onRefresh} title="Refresh" aria-label="Refresh current page"><Icon name="refresh" /></button>
         </header>
         <main className="content">{children}</main>
       </div>
@@ -33,6 +52,21 @@ export function Shell({ route, onRoute, onRefresh, children }: { route: RouteKey
           </button>
         ))}
       </nav>
+      {mobileMenuOpen ? <div className="mobile-menu-scrim" onClick={() => setMobileMenuOpen(false)}>
+        <aside className="mobile-menu-sheet" role="dialog" aria-modal="true" aria-label="Navigation menu" onClick={(event) => event.stopPropagation()}>
+          <div className="mobile-menu-head">
+            <div><strong>Supervisor</strong><span>Operator console</span></div>
+            <button className="icon-button" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation menu"><Icon name="close" /></button>
+          </div>
+          <nav className="mobile-menu-nav" aria-label="All destinations">
+            {navItems.map((item) => (
+              <button key={item.key} className={`mobile-menu-item ${route === item.key ? 'selected' : ''}`} onClick={() => onRoute(item.key)}>
+                <Icon name={item.icon} size={21} /><span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+      </div> : null}
     </div>
   );
 }
