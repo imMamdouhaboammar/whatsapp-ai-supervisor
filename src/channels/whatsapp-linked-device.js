@@ -4,6 +4,10 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
+function canonicalWhatsAppId(value) {
+  return String(value).trim().replace(/@(c|lid)\.us$/i, '');
+}
+
 export function whatsappTransportMode(tenant) {
   return String(tenant?.whatsapp?.mode ?? 'cloud').toLowerCase();
 }
@@ -19,8 +23,9 @@ export function normalizeLinkedDeviceInbound(payload, { allowGroups = false } = 
 
   const id = String(message.id ?? '').trim();
   const from = String(message.from ?? '').trim();
+  const customerId = canonicalWhatsAppId(from);
   const text = typeof message.text === 'string' ? message.text.trim() : '';
-  if (!id || !from || !text) throw new Error('invalid_linked_device_message');
+  if (!id || !customerId || !text) throw new Error('invalid_linked_device_message');
 
   const timestamp = Number(message.timestamp ?? 0);
   return {
@@ -28,7 +33,7 @@ export function normalizeLinkedDeviceInbound(payload, { allowGroups = false } = 
     channel: 'whatsapp',
     transport: 'linked-device',
     sessionId,
-    customerId: from,
+    customerId,
     customerName: typeof message.customerName === 'string' && message.customerName.trim() ? message.customerName.trim() : null,
     text,
     timestamp: Number.isFinite(timestamp) ? timestamp : 0

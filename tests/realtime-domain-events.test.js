@@ -45,7 +45,7 @@ test('SseBroadcaster emits canonical domain event envelope without flattening it
   assert.match(frame, /^event: message\.received\n/);
   const dataLine = frame.split('\n').find((line) => line.startsWith('data: '));
   assert.ok(dataLine);
-  assert.deepEqual(JSON.parse(dataLine.slice(6)), event);
+  assert.deepEqual(JSON.parse(dataLine.slice(6)), JSON.parse(JSON.stringify(event)));
 });
 
 test('SseBroadcaster rejects malformed domain events at the realtime boundary', () => {

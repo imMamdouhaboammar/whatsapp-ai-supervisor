@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeLinkedDeviceInbound, WhatsAppLinkedDeviceSender } from '../src/channels/whatsapp-linked-device.js';
 
-test('normalizeLinkedDeviceInbound accepts a direct text message from a trusted worker', () => {
+test('normalizeLinkedDeviceInbound accepts a direct text message with a canonical customer id', () => {
   const message = normalizeLinkedDeviceInbound({
     sessionId: 'acme-sales',
     message: {
@@ -22,7 +22,7 @@ test('normalizeLinkedDeviceInbound accepts a direct text message from a trusted 
     channel: 'whatsapp',
     transport: 'linked-device',
     sessionId: 'acme-sales',
-    customerId: '20100@c.us',
+    customerId: '20100',
     customerName: 'Mamdouh',
     text: 'hello',
     timestamp: 1720000000

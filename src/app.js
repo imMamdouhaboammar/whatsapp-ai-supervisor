@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { normalizeWhatsAppWebhook, validateMetaSignature, verifyWebhookChallenge } from './channels/whatsapp-cloud.js';
 import { normalizeLinkedDeviceInbound } from './channels/whatsapp-linked-device.js';
-import { createDomainEvent } from './domain/domain-event.js';
+import { createDomainEvent, deriveDomainEvent } from './domain/domain-event.js';
 import { serveStaticUi } from './management/static-ui.js';
 
 function sendJson(res, status, body) {
@@ -55,6 +55,22 @@ function createInboundDomainEvent(message, tenant, connectorId) {
   });
 }
 
+function createDecisionDomainEvent(inboundEvent, result) {
+  return deriveDomainEvent(inboundEvent, {
+    eventType: 'decision.completed',
+    actor: { type: 'ai', id: 'supervisor' },
+    payload: {
+      action: result.action,
+      wouldAction: result.wouldAction ?? null,
+      reason: result.reason ?? null,
+      intent: result.model?.intent ?? null,
+      confidence: result.model?.confidence ?? null,
+      provider: result.model?.provider ?? null,
+      model: result.model?.model ?? null
+    }
+  });
+}
+
 export function createHttpServer({
   verifyToken,
   appSecret,
@@ -87,51 +103,31 @@ export function createHttpServer({
     const inboundDomainEvent = createInboundDomainEvent(normalizedMessage, tenant, connectorId);
     try {
       conversationStore?.recordInbound(normalizedMessage, inboundDomainEvent);
-      sseBroadcaster?.broadcast('message:inbound', {
-        tenantId: tenant.id,
-        customerId: normalizedMessage.customerId,
-        customerName: normalizedMessage.customerName,
-        text: normalizedMessage.text,
-        messageId: normalizedMessage.id,
-        at: inboundDomainEvent.occurredAt
-      });
+      sseBroadcaster?.broadcastDomainEvent?.(inboundDomainEvent);
 
       if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
         const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
-        const at = new Date().toISOString();
+        const decisionDomainEvent = createDecisionDomainEvent(inboundDomainEvent, result);
         auditStore.append({
           id: crypto.randomUUID(),
           tenantId: tenant.id,
           messageId: normalizedMessage.id,
           customerId: normalizedMessage.customerId,
           channel: normalizedMessage.channel,
-          at,
+          at: decisionDomainEvent.occurredAt,
           model: null,
           permission: result.permission,
           result: { action: 'human', reason: 'human_takeover', wouldAction: null }
         });
-        conversationStore?.recordDecision(normalizedMessage, result, at);
-        sseBroadcaster?.broadcast('message:decision', {
-          tenantId: tenant.id,
-          customerId: normalizedMessage.customerId,
-          customerName: normalizedMessage.customerName,
-          messageId: normalizedMessage.id,
-          result,
-          at
-        });
+        conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
+        sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
         return { processed: 1, duplicates: 0, failures: [] };
       }
 
       const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
-      conversationStore?.recordDecision(normalizedMessage, result);
-      sseBroadcaster?.broadcast('message:decision', {
-        tenantId: tenant.id,
-        customerId: normalizedMessage.customerId,
-        customerName: normalizedMessage.customerName,
-        messageId: normalizedMessage.id,
-        result,
-        at: new Date().toISOString()
-      });
+      const decisionDomainEvent = createDecisionDomainEvent(inboundDomainEvent, result);
+      conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
+      sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
       return { processed: 1, duplicates: 0, failures: [] };
     } catch {
       await claims.release(claimKey);
