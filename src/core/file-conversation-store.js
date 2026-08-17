@@ -1,85 +1,98 @@
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-function safeTenantFile(tenantId) {
-  const safe = String(tenantId).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'tenant';
-  const suffix = createHash('sha256').update(String(tenantId)).digest('hex').slice(0, 12);
-  return `${safe}-${suffix}`;
+function safeTenantId(value) {
+  return String(value).replace(/[^a-z0-9._-]/gi, '_');
 }
 
-function isoFromMessage(message) {
-  const timestamp = Number(message?.timestamp);
-  if (Number.isFinite(timestamp) && timestamp > 0) return new Date(timestamp * 1000).toISOString();
-  return new Date().toISOString();
+function displayName(event) {
+  return event.customerName || event.customerId;
 }
 
-function cleanText(value) {
-  return typeof value === 'string' ? value.slice(0, 20_000) : null;
+function lineageFields(domainEvent) {
+  if (!domainEvent) return {};
+  return {
+    domainEventId: domainEvent.eventId,
+    domainEventType: domainEvent.eventType,
+    domainSchemaVersion: domainEvent.schemaVersion,
+    conversationId: domainEvent.conversationId ?? null,
+    correlationId: domainEvent.correlationId,
+    causationId: domainEvent.causationId ?? null,
+    idempotencyKey: domainEvent.idempotencyKey ?? null
+  };
 }
 
 export class FileConversationStore {
   constructor({ dataDir }) {
-    if (!dataDir) throw new Error('FileConversationStore dataDir is required');
-    this.root = join(dataDir, 'conversations');
-    this.eventsDir = join(this.root, 'events');
-    this.controlsDir = join(this.root, 'controls');
-    mkdirSync(this.eventsDir, { recursive: true });
-    mkdirSync(this.controlsDir, { recursive: true });
+    this.dir = join(dataDir, 'conversations');
+    mkdirSync(this.dir, { recursive: true });
   }
 
-  eventsFile(tenantId) {
-    return join(this.eventsDir, `${safeTenantFile(tenantId)}.ndjson`);
-  }
-
-  controlsFile(tenantId) {
-    return join(this.controlsDir, `${safeTenantFile(tenantId)}.json`);
+  fileFor(tenantId) {
+    return join(this.dir, `${safeTenantId(tenantId)}.ndjson`);
   }
 
   appendEvent(event) {
-    if (!event?.tenantId || !event?.customerId) throw new Error('Conversation event tenantId and customerId are required');
-    appendFileSync(this.eventsFile(event.tenantId), `${JSON.stringify(event)}\n`, { encoding: 'utf8', mode: 0o600 });
+    if (!event?.tenantId) throw new Error('conversation_event_tenant_required');
+    if (!event?.customerId) throw new Error('conversation_event_customer_required');
+    appendFileSync(this.fileFor(event.tenantId), `${JSON.stringify(event)}\n`, 'utf8');
     return event;
   }
 
-  recordInbound(message) {
+  recordInbound(message, domainEvent = null, at = domainEvent?.occurredAt ?? new Date().toISOString()) {
     return this.appendEvent({
-      id: String(message.id),
+      id: message.id,
       tenantId: message.tenantId,
       customerId: String(message.customerId),
-      customerName: cleanText(message.customerName) ?? String(message.customerId),
+      customerName: message.customerName ?? null,
       type: 'message',
       direction: 'inbound',
-      text: cleanText(message.text) ?? '',
-      at: isoFromMessage(message),
-      action: null,
-      intent: null,
-      confidence: null
+      text: message.text ?? '',
+      at,
+      ...lineageFields(domainEvent)
     });
   }
 
   recordDecision(message, result, at = new Date().toISOString()) {
-    const model = result?.model ?? null;
-    const permission = result?.permission ?? null;
-    return this.appendEvent({
-      id: `${message.id}:decision`,
+    const decisionEvent = this.appendEvent({
+      id: crypto.randomUUID(),
       tenantId: message.tenantId,
       customerId: String(message.customerId),
-      customerName: cleanText(message.customerName) ?? String(message.customerId),
+      customerName: message.customerName ?? null,
       type: 'decision',
-      direction: 'assistant',
-      text: cleanText(model?.reply),
+      direction: 'system',
+      text: result.model?.reply ?? '',
       at,
-      action: result?.action ?? null,
-      wouldAction: result?.wouldAction ?? null,
-      reason: result?.reason ?? null,
-      intent: model?.intent ?? permission?.intent ?? null,
-      confidence: Number.isFinite(model?.confidence) ? model.confidence : null,
-      thinking: cleanText(model?.thinking),
-      proactiveOffer: cleanText(model?.proactiveOffer),
-      modelName: model?.model ?? null,
-      provider: model?.provider ?? null
+      action: result.action,
+      intent: result.model?.intent ?? null,
+      confidence: result.model?.confidence ?? null,
+      thinking: result.model?.thinking ?? null,
+      proactiveOffer: result.model?.proactiveOffer ?? null,
+      modelName: result.model?.model ?? null,
+      provider: result.model?.provider ?? null
     });
+
+    if (result.action === 'reply' && result.model?.reply) {
+      this.appendEvent({
+        id: result.outbound?.messages?.[0]?.id ?? result.outbound?.id ?? crypto.randomUUID(),
+        tenantId: message.tenantId,
+        customerId: String(message.customerId),
+        customerName: message.customerName ?? null,
+        type: 'message',
+        direction: 'assistant',
+        text: result.model.reply,
+        at,
+        action: result.action,
+        intent: result.model?.intent ?? null,
+        confidence: result.model?.confidence ?? null,
+        thinking: result.model?.thinking ?? null,
+        proactiveOffer: result.model?.proactiveOffer ?? null,
+        modelName: result.model?.model ?? null,
+        provider: result.model?.provider ?? null
+      });
+    }
+
+    return decisionEvent;
   }
 
   recordManualOutbound({ tenantId, customerId, customerName = null, text, messageId = null, at = new Date().toISOString() }) {
@@ -87,94 +100,104 @@ export class FileConversationStore {
       id: messageId ?? crypto.randomUUID(),
       tenantId,
       customerId: String(customerId),
-      customerName: cleanText(customerName) ?? String(customerId),
+      customerName,
       type: 'message',
-      direction: 'human',
-      text: cleanText(text) ?? '',
+      direction: 'operator',
+      text,
       at,
-      action: 'human_reply',
-      intent: null,
-      confidence: null
+      action: 'human'
+    });
+  }
+
+  setControl(tenantId, customerId, mode, at = new Date().toISOString()) {
+    if (!['ai', 'human'].includes(mode)) throw new Error('invalid_conversation_control_mode');
+    return this.appendEvent({
+      id: crypto.randomUUID(),
+      tenantId,
+      customerId: String(customerId),
+      customerName: null,
+      type: 'control',
+      direction: 'system',
+      text: '',
+      at,
+      mode
     });
   }
 
   readEvents(tenantId) {
-    try {
-      const text = readFileSync(this.eventsFile(tenantId), 'utf8');
-      const events = [];
-      for (const line of text.split('\n')) {
-        if (!line.trim()) continue;
-        try {
-          const event = JSON.parse(line);
-          if (event?.tenantId === tenantId) events.push(event);
-        } catch {
-          // Keep readable events even when one line is damaged.
-        }
-      }
-      return events;
-    } catch (error) {
-      if (error?.code === 'ENOENT') return [];
-      throw error;
-    }
-  }
-
-  readControls(tenantId) {
-    try {
-      const parsed = JSON.parse(readFileSync(this.controlsFile(tenantId), 'utf8'));
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (error) {
-      if (error?.code === 'ENOENT' || error instanceof SyntaxError) return {};
-      throw error;
-    }
+    const file = this.fileFor(tenantId);
+    if (!existsSync(file)) return [];
+    return readFileSync(file, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
   }
 
   getControl(tenantId, customerId) {
-    const controls = this.readControls(tenantId);
-    return controls[String(customerId)] === 'human' ? 'human' : 'ai';
+    let mode = 'ai';
+    for (const event of this.readEvents(tenantId)) {
+      if (String(event.customerId) === String(customerId) && event.type === 'control') mode = event.mode;
+    }
+    return mode;
   }
 
   isHumanControlled(tenantId, customerId) {
     return this.getControl(tenantId, customerId) === 'human';
   }
 
-  setControl(tenantId, customerId, mode) {
-    if (!['ai', 'human'].includes(mode)) throw new Error('invalid_conversation_control_mode');
-    const controls = this.readControls(tenantId);
-    controls[String(customerId)] = mode;
-    writeFileSync(this.controlsFile(tenantId), `${JSON.stringify(controls, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-    return mode;
+  list(tenantId, { limit = 200 } = {}) {
+    const events = this.readEvents(tenantId);
+    const threads = new Map();
+    for (const event of events) {
+      if (!threads.has(event.customerId)) {
+        threads.set(event.customerId, {
+          tenantId,
+          customerId: event.customerId,
+          customerName: displayName(event),
+          control: 'ai',
+          lastActivityAt: event.at,
+          lastAction: null,
+          lastIntent: null,
+          lastConfidence: null,
+          messages: []
+        });
+      }
+      const thread = threads.get(event.customerId);
+      thread.customerName = event.customerName || thread.customerName;
+      thread.lastActivityAt = event.at || thread.lastActivityAt;
+      if (event.type === 'control') {
+        thread.control = event.mode;
+      } else {
+        thread.messages.push({
+          id: event.id,
+          direction: event.direction,
+          text: event.text,
+          at: event.at,
+          action: event.action ?? null,
+          intent: event.intent ?? null,
+          confidence: event.confidence ?? null,
+          thinking: event.thinking ?? null,
+          proactiveOffer: event.proactiveOffer ?? null,
+          modelName: event.modelName ?? null,
+          provider: event.provider ?? null
+        });
+        if (event.action) thread.lastAction = event.action;
+        if (event.intent) thread.lastIntent = event.intent;
+        if (event.confidence !== null && event.confidence !== undefined) thread.lastConfidence = event.confidence;
+      }
+    }
+
+    return [...threads.values()]
+      .sort((a, b) => String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)))
+      .slice(0, limit)
+      .map((thread) => ({
+        ...thread,
+        preview: thread.messages.at(-1)?.text ?? '',
+        messageCount: thread.messages.length
+      }));
   }
 
-  list(tenantId) {
-    const controls = this.readControls(tenantId);
-    const threads = new Map();
-    const seen = new Set();
-    for (const event of this.readEvents(tenantId)) {
-      if (seen.has(event.id)) continue;
-      seen.add(event.id);
-      const customerId = String(event.customerId);
-      let thread = threads.get(customerId);
-      if (!thread) {
-        thread = {
-          tenantId,
-          customerId,
-          customerName: event.customerName || customerId,
-          control: controls[customerId] === 'human' ? 'human' : 'ai',
-          lastActivityAt: event.at,
-          preview: '',
-          messages: []
-        };
-        threads.set(customerId, thread);
-      }
-      if (event.customerName && (event.customerName !== customerId || thread.customerName === customerId)) {
-        thread.customerName = event.customerName;
-      }
-      thread.lastActivityAt = event.at || thread.lastActivityAt;
-      if (event.text) thread.preview = event.text;
-      thread.messages.push(event);
-    }
-    return [...threads.values()]
-      .map((thread) => ({ ...thread, messages: thread.messages.sort((a, b) => String(a.at).localeCompare(String(b.at))) }))
-      .sort((a, b) => String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)));
+  listRecentEvents(tenantId, limit = 200) {
+    return this.readEvents(tenantId).slice(-limit).reverse();
   }
 }
