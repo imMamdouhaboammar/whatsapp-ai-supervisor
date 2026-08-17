@@ -100,9 +100,7 @@ const linkedDeviceStatus = createLinkedDeviceStatusProvider({
 const moderatorEngine = new AutonomousModeratorEngine({
   tenantStore,
   conversationStore,
-  auditStore,
-  orchestratorForTenant,
-  channelSenderForTenant: (tenant) => senderForTenant(tenant)
+  orchestratorForTenant
 });
 
 const managementRouter = createManagementRouter({
