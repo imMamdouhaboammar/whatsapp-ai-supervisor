@@ -175,3 +175,17 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     server.close();
   }
 });
+
+test('management credentials in URL query parameters are rejected', async () => {
+  const { server } = fixture();
+  const base = await start(server);
+  try {
+    const queryCredential = await fetch(`${base}/api/management/session?token=secret`);
+    assert.equal(queryCredential.status, 401);
+
+    const bearerCredential = await fetch(`${base}/api/management/session`, {
+      headers: { authorization: 'Bearer secret' }
+    });
+    assert.equal(bearerCredential.status, 200);
+  } finally { server.close(); }
+});
