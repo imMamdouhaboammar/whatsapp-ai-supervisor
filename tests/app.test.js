@@ -161,3 +161,28 @@ test('linked-device ingress ignores group messages unless tenant opts in', async
     assert.equal(d.auditStore.list('demo').length, 0);
   });
 });
+
+test('legacy v1 control endpoints require management bearer auth when configured', async () => {
+  const d = { ...deps(), managementToken: 'operator-secret' };
+  await withServer(d, async (base) => {
+    const simulateInit = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'demo', text: 'hello', customerId: 'sim-user' })
+    };
+    const deniedSimulation = await fetch(`${base}/v1/simulate`, simulateInit);
+    const deniedAudit = await fetch(`${base}/v1/audit?tenantId=demo`);
+    assert.equal(deniedSimulation.status, 401);
+    assert.equal(deniedAudit.status, 401);
+
+    const allowedSimulation = await fetch(`${base}/v1/simulate`, {
+      ...simulateInit,
+      headers: { ...simulateInit.headers, authorization: 'Bearer operator-secret' }
+    });
+    const allowedAudit = await fetch(`${base}/v1/audit?tenantId=demo`, {
+      headers: { authorization: 'Bearer operator-secret' }
+    });
+    assert.equal(allowedSimulation.status, 200);
+    assert.equal(allowedAudit.status, 200);
+  });
+});
