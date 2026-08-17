@@ -123,3 +123,41 @@ test('moderator dry run passes simulation mode for unanswered inbound messages',
   assert.equal(report.summaries[0].results[0].action, 'simulation');
   assert.equal(report.summaries[0].results[0].wouldAction, 'reply');
 });
+
+test('proactive followup goes through orchestrator policy instead of direct model send', async () => {
+  const tenant = { id: 'test-tenant', ai: { route: 'standard', routes: {} } };
+  const threadList = [{
+    customerId: '55555',
+    customerName: 'Mona',
+    control: 'ai',
+    messages: [{ id: 'out-1', direction: 'assistant', text: 'Anything else?' }]
+  }];
+  let handleCalls = 0;
+  let directSends = 0;
+  const fakeOrchestrator = {
+    async handle() {
+      handleCalls += 1;
+      return { action: 'human', reason: 'matched_rule', model: { intent: 'proactive_reengagement', reply: 'Checking in' } };
+    },
+    modelGateway: {
+      async decide() {
+        return { intent: 'proactive_reengagement', confidence: 0.99, requestedAction: 'reply', reply: 'Checking in' };
+      }
+    }
+  };
+  const engine = new AutonomousModeratorEngine({
+    tenantStore: { list: () => [tenant], findById: () => tenant },
+    conversationStore: { list: () => threadList, recordDecision() {}, appendEvent() {} },
+    auditStore: { append() {} },
+    orchestratorForTenant: () => fakeOrchestrator,
+    channelSenderForTenant: () => ({ async sendText() { directSends += 1; return { id: 'sent' }; } })
+  });
+
+  const report = await engine.moderateAll({ tenantId: 'test-tenant', dryRun: false });
+
+  assert.equal(handleCalls, 1);
+  assert.equal(directSends, 0);
+  assert.equal(report.totalFollowupsSent, 0);
+  assert.equal(report.totalHumanHandoffs, 1);
+  assert.equal(report.summaries[0].results[0].action, 'human');
+});
