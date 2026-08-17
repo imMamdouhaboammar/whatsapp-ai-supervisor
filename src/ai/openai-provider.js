@@ -18,18 +18,21 @@ function extractOutputText(body) {
       if (content.type === 'output_text' && typeof content.text === 'string') return content.text;
     }
   }
-  throw new Error('OpenAI response did not contain output text');
+  throw Object.assign(new Error('OpenAI response did not contain output text'), { code: 'invalid_response' });
 }
-
 
 function validateDecision(value) {
   const allowed = new Set(['ignore', 'draft', 'reply', 'act', 'human']);
-  if (!value || typeof value !== 'object') throw new Error('Invalid model decision: expected object');
-  if (typeof value.intent !== 'string' || !value.intent.trim()) throw new Error('Invalid model decision: intent');
-  if (typeof value.confidence !== 'number' || value.confidence < 0 || value.confidence > 1) throw new Error('Invalid model decision: confidence');
-  if (typeof value.reply !== 'string') throw new Error('Invalid model decision: reply');
-  if (!allowed.has(value.requestedAction)) throw new Error('Invalid model decision: requestedAction');
+  if (!value || typeof value !== 'object') throw Object.assign(new Error('Invalid model decision: expected object'), { code: 'invalid_response' });
+  if (typeof value.intent !== 'string' || !value.intent.trim()) throw Object.assign(new Error('Invalid model decision: intent'), { code: 'invalid_response' });
+  if (typeof value.confidence !== 'number' || value.confidence < 0 || value.confidence > 1) throw Object.assign(new Error('Invalid model decision: confidence'), { code: 'invalid_response' });
+  if (typeof value.reply !== 'string') throw Object.assign(new Error('Invalid model decision: reply'), { code: 'invalid_response' });
+  if (!allowed.has(value.requestedAction)) throw Object.assign(new Error('Invalid model decision: requestedAction'), { code: 'invalid_response' });
   return value;
+}
+
+function httpError(status) {
+  return Object.assign(new Error('OpenAI request failed'), { status: Number(status) });
 }
 
 export class OpenAIProvider extends ModelProvider {
@@ -41,9 +44,10 @@ export class OpenAIProvider extends ModelProvider {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
-  async decide({ model, message, businessContext = null, availableCapabilities = [] }) {
+  async decide({ model, message, businessContext = null, availableCapabilities = [], signal = undefined }) {
     const response = await this.fetchImpl(`${this.baseUrl}/responses`, {
       method: 'POST',
+      signal,
       headers: {
         authorization: `Bearer ${this.apiKey}`,
         'content-type': 'application/json'
@@ -76,13 +80,17 @@ export class OpenAIProvider extends ModelProvider {
       })
     });
 
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 500)}`);
-    }
+    if (!response.ok) throw httpError(response.status);
 
     const body = await response.json();
-    const parsed = validateDecision(JSON.parse(extractOutputText(body)));
+    let parsedJson;
+    try {
+      parsedJson = JSON.parse(extractOutputText(body));
+    } catch (error) {
+      if (error?.code === 'invalid_response') throw error;
+      throw Object.assign(new Error('Invalid model decision: JSON'), { code: 'invalid_response' });
+    }
+    const parsed = validateDecision(parsedJson);
     return { ...parsed, model, provider: 'openai' };
   }
 }
