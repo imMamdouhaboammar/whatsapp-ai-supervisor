@@ -15,8 +15,10 @@ test('Dockerfile defines supervisor, browser-worker, and WhatsApp Web worker tar
   assert.match(dockerfile, /SUDO_FORCE_REMOVE=yes apt-get purge -y sudo/);
   assert.match(dockerfile, /CMD \["node", "src\/cli\.js", "browser-worker"\]/);
   assert.match(dockerfile, /FROM node:22-bookworm-slim AS whatsapp-web-worker/);
+  assert.match(dockerfile, /PUPPETEER_CACHE_DIR=\/app\/\.cache\/puppeteer/);
   assert.match(dockerfile, /workers\/whatsapp-web\/package\.json/);
-  assert.match(dockerfile, /puppeteer browsers install chrome --install-deps/);
+  assert.match(dockerfile, /PUPPETEER_SKIP_DOWNLOAD=true npm install --omit=dev \\\n    && apt-get update \\\n    && npx --no-install puppeteer browsers install chrome --install-deps/);
+  assert.match(dockerfile, /rm -rf \/var\/lib\/apt\/lists\/\*/);
 });
 
 test('compose keeps browser worker private and persists supervisor data', async () => {

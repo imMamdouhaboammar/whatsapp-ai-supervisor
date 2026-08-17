@@ -47,12 +47,15 @@ ENV NODE_ENV=production \
     WHATSAPP_WEB_WORKER_HOST=0.0.0.0 \
     WHATSAPP_WEB_WORKER_PORT=7441 \
     WHATSAPP_WEB_DATA_DIR=/app/data/whatsapp-web \
-    SUPERVISOR_INTERNAL_URL=http://supervisor:3000
+    SUPERVISOR_INTERNAL_URL=http://supervisor:3000 \
+    PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 WORKDIR /app/worker
 COPY workers/whatsapp-web/package.json ./package.json
 RUN PUPPETEER_SKIP_DOWNLOAD=true npm install --omit=dev \
+    && apt-get update \
     && npx --no-install puppeteer browsers install chrome --install-deps \
+    && rm -rf /var/lib/apt/lists/* \
     && npm cache clean --force
 COPY workers/whatsapp-web/src ./src
 
