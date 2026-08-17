@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS domain_events (
   idempotency_key TEXT,
   actor JSONB NOT NULL,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, event_type, idempotency_key)
 );
 
 CREATE INDEX IF NOT EXISTS domain_events_tenant_occurred_idx
