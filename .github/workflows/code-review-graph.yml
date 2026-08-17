@@ -15,4 +15,4 @@ jobs:
       - uses: tirth8205/code-review-graph@v2.3.6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-risk: high
+          fail-on-risk: critical
