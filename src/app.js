@@ -219,7 +219,7 @@ export function createHttpServer({
       if (error instanceof SyntaxError) return sendJson(res, 400, { error: 'invalid_json' });
       if (error instanceof Error && error.message === 'request_body_too_large') return sendJson(res, 413, { error: error.message });
       if (error instanceof Error && error.message.startsWith('invalid_linked_device')) return sendJson(res, 400, { error: error.message });
-      return sendJson(res, 500, { error: 'internal_error', detail: error instanceof Error ? error.message : String(error) });
+      return sendJson(res, 500, { error: 'internal_error' });
     }
   });
 }
