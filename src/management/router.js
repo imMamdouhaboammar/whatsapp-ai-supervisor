@@ -22,11 +22,10 @@ async function readJson(req, limit = 128_000) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
-function authorized(req, token, url = null) {
+function authorized(req, token) {
   if (!token) return true;
-  const authHeader = String(req.headers.authorization ?? '');
-  const queryToken = url?.searchParams?.get('token') ? `Bearer ${url.searchParams.get('token')}` : '';
-  const candidate = authHeader || queryToken;
+  const candidate = String(req.headers.authorization ?? '');
+  if (!candidate.startsWith('Bearer ')) return false;
   const actual = Buffer.from(candidate);
   const expected = Buffer.from(`Bearer ${token}`);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
@@ -38,16 +37,17 @@ function requireTenant(tenantStore, tenantId) {
   return tenant;
 }
 
-/** Extract :segment from a pathname pattern like /api/management/tenants/:id */
 function matchPath(pathname, pattern) {
-  const patParts = pattern.split('/');
+  const patternParts = pattern.split('/');
   const urlParts = pathname.split('/');
-  if (patParts.length !== urlParts.length) return null;
+  if (patternParts.length !== urlParts.length) return null;
+
   const params = {};
-  for (let i = 0; i < patParts.length; i++) {
-    if (patParts[i].startsWith(':')) {
-      params[patParts[i].slice(1)] = decodeURIComponent(urlParts[i]);
-    } else if (patParts[i] !== urlParts[i]) {
+  for (let index = 0; index < patternParts.length; index += 1) {
+    const patternPart = patternParts[index];
+    if (patternPart.startsWith(':')) {
+      params[patternPart.slice(1)] = decodeURIComponent(urlParts[index]);
+    } else if (patternPart !== urlParts[index]) {
       return null;
     }
   }
@@ -64,40 +64,41 @@ export function createManagementRouter({
   manualSend,
   moderatorEngine = null,
   sseBroadcaster = null,
+  onTenantChanged = () => {},
   runtimeSummary = () => ({})
 }) {
   return async function handleManagementRequest(req, res, url) {
     if (!url.pathname.startsWith('/api/management/')) return false;
 
     if (req.method === 'GET' && url.pathname === '/api/management/session') {
-      if (!authorized(req, token, url)) return sendJson(res, 401, { authenticated: false, authRequired: true });
+      if (!authorized(req, token)) {
+        return sendJson(res, 401, { authenticated: false, authRequired: true });
+      }
       return sendJson(res, 200, { authenticated: true, authRequired: Boolean(token) });
     }
 
     if (req.method === 'GET' && url.pathname === '/api/management/events') {
-      if (!authorized(req, token, url)) return sendJson(res, 401, { error: 'management_unauthorized' });
+      if (!authorized(req, token)) return sendJson(res, 401, { error: 'management_unauthorized' });
       if (!sseBroadcaster) return sendJson(res, 503, { error: 'realtime_unavailable' });
       sseBroadcaster.addClient(res);
       return true;
     }
 
-    if (!authorized(req, token, url)) return sendJson(res, 401, { error: 'management_unauthorized' });
+    if (!authorized(req, token)) return sendJson(res, 401, { error: 'management_unauthorized' });
 
     try {
-      // ── tenant list ──────────────────────────────────────────────────────────
       if (req.method === 'GET' && url.pathname === '/api/management/tenants') {
         return sendJson(res, 200, { tenants: tenantStore.list().map(sanitizeTenant) });
       }
 
-      // ── tenant create ────────────────────────────────────────────────────────
       if (req.method === 'POST' && url.pathname === '/api/management/tenants') {
         const body = await readJson(req);
         const tenant = tenantStore.create(body);
         tenantStore.persist();
+        onTenantChanged(tenant.id);
         return sendJson(res, 201, { tenant: sanitizeTenant(tenant) });
       }
 
-      // ── tenant get by id ─────────────────────────────────────────────────────
       const tenantIdMatch = matchPath(url.pathname, '/api/management/tenants/:id');
       if (tenantIdMatch) {
         const { id } = tenantIdMatch;
@@ -107,26 +108,25 @@ export function createManagementRouter({
           return sendJson(res, 200, { tenant: sanitizeTenant(tenant) });
         }
 
-        // ── tenant update ──────────────────────────────────────────────────────
         if (req.method === 'PUT' || req.method === 'PATCH') {
           const body = await readJson(req);
           const tenant = tenantStore.update(id, body);
           tenantStore.persist();
+          onTenantChanged(id);
           return sendJson(res, 200, { tenant: sanitizeTenant(tenant) });
         }
 
-        // ── tenant delete ──────────────────────────────────────────────────────
         if (req.method === 'DELETE') {
           tenantStore.delete(id);
           tenantStore.persist();
+          onTenantChanged(id);
           return sendJson(res, 200, { deleted: true, id });
         }
       }
 
-      // ── WhatsApp numbers list + add ──────────────────────────────────────────
-      const waNumbersMatch = matchPath(url.pathname, '/api/management/tenants/:id/numbers');
-      if (waNumbersMatch) {
-        const { id } = waNumbersMatch;
+      const whatsappNumbersMatch = matchPath(url.pathname, '/api/management/tenants/:id/numbers');
+      if (whatsappNumbersMatch) {
+        const { id } = whatsappNumbersMatch;
 
         if (req.method === 'GET') {
           const tenant = requireTenant(tenantStore, id);
@@ -144,22 +144,19 @@ export function createManagementRouter({
           const body = await readJson(req);
           const { tenant, number } = tenantStore.addWhatsAppNumber(id, body);
           tenantStore.persist();
+          onTenantChanged(id);
           return sendJson(res, 201, { tenant: sanitizeTenant(tenant), number });
         }
       }
 
-      // ── WhatsApp number delete ───────────────────────────────────────────────
-      const waNumberMatch = matchPath(url.pathname, '/api/management/tenants/:id/numbers/:numberId');
-      if (waNumberMatch) {
-        const { id, numberId } = waNumberMatch;
-        if (req.method === 'DELETE') {
-          const tenant = tenantStore.removeWhatsAppNumber(id, numberId);
-          tenantStore.persist();
-          return sendJson(res, 200, { deleted: true, tenantId: id, numberId, tenant: sanitizeTenant(tenant) });
-        }
+      const whatsappNumberMatch = matchPath(url.pathname, '/api/management/tenants/:id/numbers/:numberId');
+      if (whatsappNumberMatch && req.method === 'DELETE') {
+        const { id, numberId } = whatsappNumberMatch;
+        const tenant = tenantStore.removeWhatsAppNumber(id, numberId);
+        tenantStore.persist();
+        onTenantChanged(id);
+        return sendJson(res, 200, { deleted: true, tenantId: id, numberId, tenant: sanitizeTenant(tenant) });
       }
-
-      // ── existing routes ──────────────────────────────────────────────────────
 
       if (req.method === 'GET' && url.pathname === '/api/management/whatsapp') {
         return sendJson(res, 200, { sessions: await linkedDeviceStatus() });
@@ -231,7 +228,6 @@ export function createManagementRouter({
         const dryRun = Boolean(body.dryRun);
         const forceAll = Boolean(body.forceAll);
         const proactiveLimit = Number(body.proactiveLimit) || 10;
-
         if (tenantId) requireTenant(tenantStore, tenantId);
         const report = await moderatorEngine.moderateAll({ tenantId, dryRun, forceAll, proactiveLimit });
         return sendJson(res, 200, report);
@@ -251,11 +247,8 @@ export function createManagementRouter({
       if (error?.message === 'request_body_too_large') return sendJson(res, 413, { error: error.message });
       if (error?.message === 'invalid_conversation_control_mode') return sendJson(res, 400, { error: error.message });
       const statusCode = Number(error?.statusCode || error?.status) || 500;
-      return sendJson(res, statusCode, {
-        error: error?.message || 'management_internal_error',
-        detail: error?.statusCode ? undefined : String(error?.message ?? error)
-      });
+      if (statusCode >= 500) return sendJson(res, 500, { error: 'management_internal_error' });
+      return sendJson(res, statusCode, { error: error?.message || 'management_request_failed' });
     }
   };
 }
-

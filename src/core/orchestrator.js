@@ -1,11 +1,16 @@
 import { evaluatePermission } from '../domain/permission-engine.js';
-
+const EXECUTION_MODES = new Set(['live', 'shadow', 'simulation']);
 function availableCapabilities(policy) {
   return (policy?.rules ?? [])
     .filter((rule) => rule.action === 'act' && rule.capability?.type)
     .map((rule) => ({ intent: rule.intent, type: rule.capability.type }));
 }
-
+function resolveExecutionMode(tenant, requestedMode = null) {
+  const requested = requestedMode ?? 'live';
+  if (!EXECUTION_MODES.has(requested)) throw new Error(`invalid_execution_mode: ${requested}`);
+  if (requested === 'simulation') return 'simulation';
+  return tenant.shadowMode ? 'shadow' : requested;
+}
 export class SupervisorOrchestrator {
   constructor({
     modelGateway,
@@ -22,14 +27,12 @@ export class SupervisorOrchestrator {
     this.conversationStore = conversationStore;
     this.now = now;
   }
-
   buildConversationContext(tenantId, customerId) {
     if (!this.conversationStore || typeof this.conversationStore.readEvents !== 'function') return [];
     try {
       const events = this.conversationStore.readEvents(tenantId)
         .filter((e) => String(e.customerId) === String(customerId))
         .slice(-6);
-
       return events.map((e) => ({
         direction: e.direction === 'inbound' ? 'user' : 'assistant',
         text: e.text,
@@ -41,16 +44,13 @@ export class SupervisorOrchestrator {
     }
   }
 
-  async handle(message, tenant) {
+  async handle(message, tenant, { executionMode = null } = {}) {
+    const resolvedExecutionMode = resolveExecutionMode(tenant, executionMode);
     const context = message.context && Array.isArray(message.context) && message.context.length > 0
       ? message.context
       : this.buildConversationContext(tenant.id, message.customerId);
 
-    const enrichedMessage = {
-      ...message,
-      context
-    };
-
+    const enrichedMessage = { ...message, context };
     const model = await this.modelGateway.decide(enrichedMessage, {
       route: tenant.ai?.route ?? 'standard',
       routes: tenant.ai?.routes ?? {},
@@ -61,8 +61,8 @@ export class SupervisorOrchestrator {
     const permission = evaluatePermission(tenant.policy ?? {}, model);
     let result;
 
-    if (tenant.shadowMode) {
-      result = { action: 'shadow', wouldAction: permission.action, model, permission };
+    if (resolvedExecutionMode !== 'live') {
+      result = { action: resolvedExecutionMode, wouldAction: permission.action, model, permission };
     } else if (permission.action === 'reply') {
       if (!model.reply?.trim()) {
         result = { action: 'human', reason: 'empty_reply', model, permission };

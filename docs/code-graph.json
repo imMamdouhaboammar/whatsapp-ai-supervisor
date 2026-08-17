@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 64,
-  "edgeCount": 111,
+  "moduleCount": 65,
+  "edgeCount": 112,
   "cycles": [],
   "nodes": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "src/ai/moderator-engine.js",
       "group": "ai",
-      "lines": 223,
+      "lines": 215,
       "exports": [
         {
           "kind": "class",
@@ -176,7 +176,7 @@
     {
       "id": "src/app.js",
       "group": "http",
-      "lines": 226,
+      "lines": 232,
       "exports": [
         {
           "kind": "function",
@@ -446,7 +446,7 @@
     {
       "id": "src/config.js",
       "group": "runtime",
-      "lines": 104,
+      "lines": 122,
       "exports": [
         {
           "kind": "function",
@@ -702,7 +702,7 @@
     {
       "id": "src/management/router.js",
       "group": "http",
-      "lines": 262,
+      "lines": 255,
       "exports": [
         {
           "kind": "function",
@@ -840,9 +840,28 @@
       ]
     },
     {
+      "id": "src/runtime/tenant-runtime-cache.js",
+      "group": "runtime",
+      "lines": 28,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "TenantRuntimeCache"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/server.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/tenant-runtime-cache.test.js"
+      ]
+    },
+    {
       "id": "src/server.js",
       "group": "entry",
-      "lines": 163,
+      "lines": 152,
       "exports": [],
       "imports": [
         "src/actions/action-gateway.js",
@@ -863,7 +882,8 @@
         "src/management/linked-device-status.js",
         "src/management/router.js",
         "src/realtime/sse-broadcaster.js",
-        "src/runtime/readiness.js"
+        "src/runtime/readiness.js",
+        "src/runtime/tenant-runtime-cache.js"
       ],
       "importedBy": [
         "src/cli.js"
@@ -1336,11 +1356,23 @@
     {
       "id": "ui/src/hooks/useRealtime.ts",
       "group": "ui",
-      "lines": 77,
+      "lines": 144,
       "exports": [
         {
           "kind": "interface",
           "name": "RealtimeEvent"
+        },
+        {
+          "kind": "function",
+          "name": "waitForRetry"
+        },
+        {
+          "kind": "function",
+          "name": "connectRealtime"
+        },
+        {
+          "kind": "function",
+          "name": "runRealtimeLoop"
         },
         {
           "kind": "function",
@@ -1356,7 +1388,9 @@
       "external": [
         "react"
       ],
-      "tests": []
+      "tests": [
+        "tests/use-realtime-ui.test.ts"
+      ]
     },
     {
       "id": "ui/src/main.tsx",
@@ -1734,6 +1768,10 @@
     {
       "from": "src/server.js",
       "to": "src/runtime/readiness.js"
+    },
+    {
+      "from": "src/server.js",
+      "to": "src/runtime/tenant-runtime-cache.js"
     },
     {
       "from": "src/server.js",

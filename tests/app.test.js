@@ -32,14 +32,15 @@ function deps() {
     findByLinkedDeviceSessionId(id) { return id === 'demo-session' ? tenant : null; }
   };
   const orchestratorForTenant = () => ({
-    async handle(message, currentTenant) {
+    async handle(message, currentTenant, options = {}) {
+      const action = options.executionMode === 'simulation' ? 'simulation' : (currentTenant.shadowMode ? 'shadow' : 'reply');
       const event = {
         id: 'audit-1', tenantId: currentTenant.id, messageId: message.id, customerId: message.customerId,
         channel: message.channel, at: new Date(0).toISOString(), model: { intent: 'faq' },
-        permission: { action: 'reply' }, result: { action: 'shadow' }
+        permission: { action: 'reply' }, result: { action }
       };
       auditStore.append(event);
-      return { action: currentTenant.shadowMode ? 'shadow' : 'reply', wouldAction: 'reply' };
+      return { action, wouldAction: 'reply' };
     }
   });
   return { verifyToken: 'verify-me', appSecret: null, tenantStore, orchestratorForTenant, auditStore, linkedDeviceIngressToken: 'ingress-secret' };
@@ -61,7 +62,7 @@ test('GET /webhooks/whatsapp returns Meta verification challenge', async () => {
   });
 });
 
-test('POST /v1/simulate is dry-run by default and returns shadow result', async () => {
+test('POST /v1/simulate uses explicit simulation mode', async () => {
   await withServer(deps(), async (base) => {
     const response = await fetch(`${base}/v1/simulate`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -70,7 +71,8 @@ test('POST /v1/simulate is dry-run by default and returns shadow result', async 
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.dryRun, true);
-    assert.equal(body.result.action, 'shadow');
+    assert.equal(body.result.action, 'simulation');
+    assert.equal(body.result.wouldAction, 'reply');
   });
 });
 
@@ -117,7 +119,6 @@ test('duplicate WhatsApp webhook message id is not processed twice', async () =>
   });
 });
 
-
 test('linked-device ingress rejects requests without worker bearer token', async () => {
   const d = deps();
   await withServer(d, async (base) => {
@@ -159,5 +160,67 @@ test('linked-device ingress ignores group messages unless tenant opts in', async
     assert.equal(response.status, 202);
     assert.equal((await response.json()).ignored, true);
     assert.equal(d.auditStore.list('demo').length, 0);
+  });
+});
+
+test('legacy v1 control endpoints require management bearer auth when configured', async () => {
+  const d = { ...deps(), managementToken: 'operator-secret' };
+  await withServer(d, async (base) => {
+    const simulateInit = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'demo', text: 'hello', customerId: 'sim-user' })
+    };
+    const deniedSimulation = await fetch(`${base}/v1/simulate`, simulateInit);
+    const deniedAudit = await fetch(`${base}/v1/audit?tenantId=demo`);
+    assert.equal(deniedSimulation.status, 401);
+    assert.equal(deniedAudit.status, 401);
+
+    const allowedSimulation = await fetch(`${base}/v1/simulate`, {
+      ...simulateInit,
+      headers: { ...simulateInit.headers, authorization: 'Bearer operator-secret' }
+    });
+    const allowedAudit = await fetch(`${base}/v1/audit?tenantId=demo`, {
+      headers: { authorization: 'Bearer operator-secret' }
+    });
+    assert.equal(allowedSimulation.status, 200);
+    assert.equal(allowedAudit.status, 200);
+  });
+});
+
+test('unexpected internal errors are not returned to clients', async () => {
+  const d = deps();
+  d.orchestratorForTenant = () => ({ async handle() { throw new Error('private-file:/srv/secrets/customer-data'); } });
+  await withServer(d, async (base) => {
+    const response = await fetch(`${base}/v1/simulate`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'demo', text: 'trigger failure' })
+    });
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.deepEqual(body, { error: 'internal_error' });
+    assert.equal(JSON.stringify(body).includes('private-file'), false);
+  });
+});
+
+test('webhook processing failures do not expose internal exception details', async () => {
+  const d = deps();
+  d.orchestratorForTenant = () => ({ async handle() { throw new Error('provider-secret:/internal/model/error'); } });
+  await withServer(d, async (base) => {
+    const response = await fetch(`${base}/webhooks/whatsapp`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'whatsapp_business_account',
+        entry: [{ changes: [{ value: {
+          metadata: { phone_number_id: 'phone-123' },
+          messages: [{ id: 'wamid.failure', from: '20100', timestamp: '1720000000', type: 'text', text: { body: 'Hello' } }]
+        } }] }]
+      })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.processed, 0);
+    assert.deepEqual(body.failures, [{ messageId: 'wamid.failure', error: 'processing_failed' }]);
+    assert.equal(JSON.stringify(body).includes('provider-secret'), false);
   });
 });

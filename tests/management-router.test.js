@@ -66,6 +66,7 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     ['acme', { id: 'acme', businessContext: { name: 'Acme' }, whatsapp: { mode: 'cloud', numbers: [] }, ai: {}, policy: { rules: [] } }]
   ]);
   let persisted = false;
+  const changedTenants = [];
 
   const mockStore = {
     list: () => Array.from(tenants.values()),
@@ -109,7 +110,8 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     auditStore: { list: () => [] },
     conversationStore: { list: () => [] },
     readiness: async () => ({ ready: true }),
-    linkedDeviceStatus: async () => []
+    linkedDeviceStatus: async () => [],
+    onTenantChanged: (tenantId) => changedTenants.push(tenantId)
   });
 
   const server = createServer((req, res) => router(req, res, new URL(req.url, 'http://localhost')));
@@ -117,7 +119,6 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
   const headers = { authorization: 'Bearer secret', 'content-type': 'application/json' };
 
   try {
-    // 1. Create tenant via POST
     const createRes = await fetch(`${base}/api/management/tenants`, {
       method: 'POST',
       headers,
@@ -128,13 +129,11 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     assert.equal(createdData.tenant.id, 'beta');
     assert.equal(persisted, true);
 
-    // 2. Get created tenant
     const getRes = await fetch(`${base}/api/management/tenants/beta`, { headers });
     assert.equal(getRes.status, 200);
     const getData = await getRes.json();
     assert.equal(getData.tenant.id, 'beta');
 
-    // 3. Update tenant via PUT
     const updateRes = await fetch(`${base}/api/management/tenants/beta`, {
       method: 'PUT',
       headers,
@@ -142,7 +141,6 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     });
     assert.equal(updateRes.status, 200);
 
-    // 4. Add WhatsApp number
     const addNumRes = await fetch(`${base}/api/management/tenants/beta/numbers`, {
       method: 'POST',
       headers,
@@ -150,28 +148,60 @@ test('management tenant CRUD and WhatsApp numbers API', async () => {
     });
     assert.equal(addNumRes.status, 201);
 
-    // 5. List numbers
     const listNumRes = await fetch(`${base}/api/management/tenants/beta/numbers`, { headers });
     assert.equal(listNumRes.status, 200);
     const listNumData = await listNumRes.json();
     assert.equal(listNumData.numbers.length, 1);
     assert.equal(listNumData.numbers[0].id, 'line-1');
 
-    // 6. Delete number
     const delNumRes = await fetch(`${base}/api/management/tenants/beta/numbers/line-1`, {
       method: 'DELETE',
       headers
     });
     assert.equal(delNumRes.status, 200);
 
-    // 7. Delete tenant
     const delRes = await fetch(`${base}/api/management/tenants/beta`, {
       method: 'DELETE',
       headers
     });
     assert.equal(delRes.status, 200);
     assert.equal(mockStore.findById('beta'), null);
+    assert.deepEqual(changedTenants, ['beta', 'beta', 'beta', 'beta', 'beta']);
   } finally {
     server.close();
   }
+});
+
+test('management credentials in URL query parameters are rejected', async () => {
+  const { server } = fixture();
+  const base = await start(server);
+  try {
+    const queryCredential = await fetch(`${base}/api/management/session?token=secret`);
+    assert.equal(queryCredential.status, 401);
+
+    const bearerCredential = await fetch(`${base}/api/management/session`, {
+      headers: { authorization: 'Bearer secret' }
+    });
+    assert.equal(bearerCredential.status, 200);
+  } finally { server.close(); }
+});
+
+test('management internal errors are redacted from client responses', async () => {
+  const router = createManagementRouter({
+    token: 'secret',
+    tenantStore: { list() { throw new Error('private-db:/srv/postgres/tenant-secret'); } },
+    auditStore: { list: () => [] },
+    conversationStore: { list: () => [] },
+    readiness: async () => ({ ready: true }),
+    linkedDeviceStatus: async () => []
+  });
+  const server = createServer((req, res) => router(req, res, new URL(req.url, 'http://localhost')));
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/management/tenants`, { headers: { authorization: 'Bearer secret' } });
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.deepEqual(body, { error: 'management_internal_error' });
+    assert.equal(JSON.stringify(body).includes('private-db'), false);
+  } finally { server.close(); }
 });

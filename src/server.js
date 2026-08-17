@@ -14,6 +14,7 @@ import { createWhatsAppSender } from './channels/whatsapp-sender-factory.js';
 import { createBrowserRuntime } from './browser/runtime-factory.js';
 import { ActionGateway } from './actions/action-gateway.js';
 import { collectReadiness } from './runtime/readiness.js';
+import { TenantRuntimeCache } from './runtime/tenant-runtime-cache.js';
 import { createManagementRouter } from './management/router.js';
 import { createLinkedDeviceStatusProvider } from './management/linked-device-status.js';
 import { AutonomousModeratorEngine } from './ai/moderator-engine.js';
@@ -28,47 +29,39 @@ const claimStore = new FileClaimStore({ dataDir: config.dataDir });
 const conversationStore = new FileConversationStore({ dataDir: config.dataDir });
 const browserRuntime = createBrowserRuntime(config.browser);
 const actionGateway = browserRuntime ? new ActionGateway({ browserRuntime }) : null;
-const runtimes = new Map();
-const manualSenders = new Map();
+const runtimeCache = new TenantRuntimeCache();
 
 function senderForTenant(tenant) {
-  const cached = manualSenders.get(tenant.id);
-  if (cached) return cached;
-  const sender = createWhatsAppSender({
+  return runtimeCache.senderFor(tenant.id, () => createWhatsAppSender({
     tenant,
     metaGraphVersion: config.meta.graphVersion,
     resolveSecret: resolveTenantSecret,
     linkedDeviceWorkerUrlOverride: config.linkedDevice.workerUrlOverride
-  });
-  manualSenders.set(tenant.id, sender);
-  return sender;
+  }));
 }
 
 function buildModelProviders(tenant) {
   const providers = {};
 
-  // 1. OpenAI
   try {
     const openaiApiKey = resolveTenantSecret(tenant.ai ?? {}, 'apiKeyEnv', 'OPENAI_API_KEY');
     providers.openai = new OpenAIProvider({ apiKey: openaiApiKey });
   } catch {}
 
-  // 2. Tabitoken / Anthropic (Claude Opus / Thinking models)
   const tabitokenKeys = process.env.TABITOKEN_API_KEYS || process.env.TABITOKEN_API_KEY || null;
   if (tabitokenKeys) {
     const anthropic = new AnthropicProvider({
-      apiKeys: tabitokenKeys.split(',').map((k) => k.trim()).filter(Boolean),
+      apiKeys: tabitokenKeys.split(',').map((key) => key.trim()).filter(Boolean),
       baseUrl: process.env.TABITOKEN_BASE_URL || 'https://tabitoken.com/v1'
     });
     providers.tabitoken = anthropic;
     providers.anthropic = anthropic;
   }
 
-  // 3. AgentRouter (GPT-5.6-Sol)
   const agentrouterKeys = process.env.AGENTROUTER_API_KEYS || process.env.AGENTROUTER_API_KEY || null;
   if (agentrouterKeys) {
     providers.agentrouter = new AgentRouterProvider({
-      apiKeys: agentrouterKeys.split(',').map((k) => k.trim()).filter(Boolean),
+      apiKeys: agentrouterKeys.split(',').map((key) => key.trim()).filter(Boolean),
       baseUrl: process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1'
     });
   }
@@ -77,27 +70,23 @@ function buildModelProviders(tenant) {
 }
 
 function orchestratorForTenant(tenant) {
-  const cached = runtimes.get(tenant.id);
-  if (cached) return cached;
-
-  const modelGateway = new ModelGateway({
-    providers: buildModelProviders(tenant)
+  return runtimeCache.runtimeFor(tenant.id, () => {
+    const modelGateway = new ModelGateway({
+      providers: buildModelProviders(tenant)
+    });
+    return new SupervisorOrchestrator({
+      modelGateway,
+      channelSender: senderForTenant(tenant),
+      auditStore,
+      actionGateway,
+      conversationStore
+    });
   });
-
-  const orchestrator = new SupervisorOrchestrator({
-    modelGateway,
-    channelSender: senderForTenant(tenant),
-    auditStore,
-    actionGateway,
-    conversationStore
-  });
-  runtimes.set(tenant.id, orchestrator);
-  return orchestrator;
 }
 
 const readiness = () => collectReadiness({
   dataDir: config.dataDir,
-  tenantCount: config.tenants.length,
+  tenantCount: tenantStore.list().length,
   browserRuntime,
   browserRequired: config.browser.required
 });
@@ -111,9 +100,7 @@ const linkedDeviceStatus = createLinkedDeviceStatusProvider({
 const moderatorEngine = new AutonomousModeratorEngine({
   tenantStore,
   conversationStore,
-  auditStore,
-  orchestratorForTenant,
-  channelSenderForTenant: (tenant) => senderForTenant(tenant)
+  orchestratorForTenant
 });
 
 const managementRouter = createManagementRouter({
@@ -124,6 +111,7 @@ const managementRouter = createManagementRouter({
   readiness,
   linkedDeviceStatus,
   manualSend: (tenant, message) => senderForTenant(tenant).sendText(message),
+  onTenantChanged: (tenantId) => runtimeCache.invalidate(tenantId),
   moderatorEngine,
   sseBroadcaster,
   runtimeSummary: () => ({
@@ -144,6 +132,7 @@ const server = createHttpServer({
   verifyToken: config.meta.verifyToken,
   appSecret: config.meta.appSecret,
   linkedDeviceIngressToken: config.linkedDevice.ingressToken,
+  managementToken: config.management.token,
   tenantStore,
   orchestratorForTenant,
   auditStore,
