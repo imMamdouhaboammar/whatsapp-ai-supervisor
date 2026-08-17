@@ -62,8 +62,8 @@ export function createManagementRouter({
   readiness,
   linkedDeviceStatus,
   manualSend,
-  moderatorEngine = null,
-  sseBroadcaster = null,
+  moderatorEngine = null, sseBroadcaster = null,
+  onTenantChanged = () => {},
   runtimeSummary = () => ({})
 }) {
   return async function handleManagementRequest(req, res, url) {
@@ -93,7 +93,7 @@ export function createManagementRouter({
       if (req.method === 'POST' && url.pathname === '/api/management/tenants') {
         const body = await readJson(req);
         const tenant = tenantStore.create(body);
-        tenantStore.persist();
+        tenantStore.persist(); onTenantChanged(tenant.id);
         return sendJson(res, 201, { tenant: sanitizeTenant(tenant) });
       }
 
@@ -111,14 +111,14 @@ export function createManagementRouter({
         if (req.method === 'PUT' || req.method === 'PATCH') {
           const body = await readJson(req);
           const tenant = tenantStore.update(id, body);
-          tenantStore.persist();
+          tenantStore.persist(); onTenantChanged(id);
           return sendJson(res, 200, { tenant: sanitizeTenant(tenant) });
         }
 
         // ── tenant delete ──────────────────────────────────────────────────────
         if (req.method === 'DELETE') {
           tenantStore.delete(id);
-          tenantStore.persist();
+          tenantStore.persist(); onTenantChanged(id);
           return sendJson(res, 200, { deleted: true, id });
         }
       }
@@ -143,7 +143,7 @@ export function createManagementRouter({
         if (req.method === 'POST') {
           const body = await readJson(req);
           const { tenant, number } = tenantStore.addWhatsAppNumber(id, body);
-          tenantStore.persist();
+          tenantStore.persist(); onTenantChanged(id);
           return sendJson(res, 201, { tenant: sanitizeTenant(tenant), number });
         }
       }
@@ -154,7 +154,7 @@ export function createManagementRouter({
         const { id, numberId } = waNumberMatch;
         if (req.method === 'DELETE') {
           const tenant = tenantStore.removeWhatsAppNumber(id, numberId);
-          tenantStore.persist();
+          tenantStore.persist(); onTenantChanged(id);
           return sendJson(res, 200, { deleted: true, tenantId: id, numberId, tenant: sanitizeTenant(tenant) });
         }
       }
