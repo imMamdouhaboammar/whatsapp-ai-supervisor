@@ -7,16 +7,51 @@ function availableCapabilities(policy) {
 }
 
 export class SupervisorOrchestrator {
-  constructor({ modelGateway, channelSender, auditStore, actionGateway = null, now = () => new Date().toISOString() }) {
+  constructor({
+    modelGateway,
+    channelSender,
+    auditStore,
+    actionGateway = null,
+    conversationStore = null,
+    now = () => new Date().toISOString()
+  }) {
     this.modelGateway = modelGateway;
     this.channelSender = channelSender;
     this.auditStore = auditStore;
     this.actionGateway = actionGateway;
+    this.conversationStore = conversationStore;
     this.now = now;
   }
 
+  buildConversationContext(tenantId, customerId) {
+    if (!this.conversationStore || typeof this.conversationStore.readEvents !== 'function') return [];
+    try {
+      const events = this.conversationStore.readEvents(tenantId)
+        .filter((e) => String(e.customerId) === String(customerId))
+        .slice(-6);
+
+      return events.map((e) => ({
+        direction: e.direction === 'inbound' ? 'user' : 'assistant',
+        text: e.text,
+        at: e.at,
+        intent: e.intent ?? null
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   async handle(message, tenant) {
-    const model = await this.modelGateway.decide(message, {
+    const context = message.context && Array.isArray(message.context) && message.context.length > 0
+      ? message.context
+      : this.buildConversationContext(tenant.id, message.customerId);
+
+    const enrichedMessage = {
+      ...message,
+      context
+    };
+
+    const model = await this.modelGateway.decide(enrichedMessage, {
       route: tenant.ai?.route ?? 'standard',
       routes: tenant.ai?.routes ?? {},
       businessContext: tenant.businessContext ?? null,
@@ -45,7 +80,7 @@ export class SupervisorOrchestrator {
       } else {
         const rule = (tenant.policy?.rules ?? []).find((candidate) => candidate.id === permission.matchedRuleId);
         try {
-          const actionResult = await this.actionGateway.execute({ tenant, message, rule });
+          const actionResult = await this.actionGateway.execute({ tenant, message: enrichedMessage, rule });
           result = { action: 'act', actionResult, model, permission };
         } catch (error) {
           result = {

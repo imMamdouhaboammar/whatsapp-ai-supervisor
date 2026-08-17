@@ -1,4 +1,5 @@
 import { createHttpServer } from './app.js';
+import { resolve } from 'node:path';
 import { loadConfig, resolveTenantSecret } from './config.js';
 import { InMemoryTenantStore } from './core/tenant-store.js';
 import { FileAuditStore } from './core/file-audit-store.js';
@@ -7,15 +8,21 @@ import { FileConversationStore } from './core/file-conversation-store.js';
 import { SupervisorOrchestrator } from './core/orchestrator.js';
 import { ModelGateway } from './ai/model-gateway.js';
 import { OpenAIProvider } from './ai/openai-provider.js';
+import { AnthropicProvider } from './ai/anthropic-provider.js';
+import { AgentRouterProvider } from './ai/agentrouter-provider.js';
 import { createWhatsAppSender } from './channels/whatsapp-sender-factory.js';
 import { createBrowserRuntime } from './browser/runtime-factory.js';
 import { ActionGateway } from './actions/action-gateway.js';
 import { collectReadiness } from './runtime/readiness.js';
 import { createManagementRouter } from './management/router.js';
 import { createLinkedDeviceStatusProvider } from './management/linked-device-status.js';
+import { AutonomousModeratorEngine } from './ai/moderator-engine.js';
+import { SseBroadcaster } from './realtime/sse-broadcaster.js';
 
 const config = loadConfig();
-const tenantStore = new InMemoryTenantStore(config.tenants);
+const sseBroadcaster = new SseBroadcaster();
+const tenantsFile = resolve(process.env.TENANTS_FILE ?? './config/tenants.json');
+const tenantStore = new InMemoryTenantStore(config.tenants, tenantsFile);
 const auditStore = new FileAuditStore({ dataDir: config.dataDir });
 const claimStore = new FileClaimStore({ dataDir: config.dataDir });
 const conversationStore = new FileConversationStore({ dataDir: config.dataDir });
@@ -37,22 +44,52 @@ function senderForTenant(tenant) {
   return sender;
 }
 
+function buildModelProviders(tenant) {
+  const providers = {};
+
+  // 1. OpenAI
+  try {
+    const openaiApiKey = resolveTenantSecret(tenant.ai ?? {}, 'apiKeyEnv', 'OPENAI_API_KEY');
+    providers.openai = new OpenAIProvider({ apiKey: openaiApiKey });
+  } catch {}
+
+  // 2. Tabitoken / Anthropic (Claude Opus / Thinking models)
+  const tabitokenKeys = process.env.TABITOKEN_API_KEYS || process.env.TABITOKEN_API_KEY || null;
+  if (tabitokenKeys) {
+    const anthropic = new AnthropicProvider({
+      apiKeys: tabitokenKeys.split(',').map((k) => k.trim()).filter(Boolean),
+      baseUrl: process.env.TABITOKEN_BASE_URL || 'https://tabitoken.com/v1'
+    });
+    providers.tabitoken = anthropic;
+    providers.anthropic = anthropic;
+  }
+
+  // 3. AgentRouter (GPT-5.6-Sol)
+  const agentrouterKeys = process.env.AGENTROUTER_API_KEYS || process.env.AGENTROUTER_API_KEY || null;
+  if (agentrouterKeys) {
+    providers.agentrouter = new AgentRouterProvider({
+      apiKeys: agentrouterKeys.split(',').map((k) => k.trim()).filter(Boolean),
+      baseUrl: process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1'
+    });
+  }
+
+  return providers;
+}
+
 function orchestratorForTenant(tenant) {
   const cached = runtimes.get(tenant.id);
   if (cached) return cached;
 
-  const openaiApiKey = resolveTenantSecret(tenant.ai ?? {}, 'apiKeyEnv', 'OPENAI_API_KEY');
   const modelGateway = new ModelGateway({
-    providers: {
-      openai: new OpenAIProvider({ apiKey: openaiApiKey })
-    }
+    providers: buildModelProviders(tenant)
   });
 
   const orchestrator = new SupervisorOrchestrator({
     modelGateway,
     channelSender: senderForTenant(tenant),
     auditStore,
-    actionGateway
+    actionGateway,
+    conversationStore
   });
   runtimes.set(tenant.id, orchestrator);
   return orchestrator;
@@ -71,6 +108,14 @@ const linkedDeviceStatus = createLinkedDeviceStatusProvider({
   resolveSecret: resolveTenantSecret
 });
 
+const moderatorEngine = new AutonomousModeratorEngine({
+  tenantStore,
+  conversationStore,
+  auditStore,
+  orchestratorForTenant,
+  channelSenderForTenant: (tenant) => senderForTenant(tenant)
+});
+
 const managementRouter = createManagementRouter({
   token: config.management.token,
   tenantStore,
@@ -79,10 +124,12 @@ const managementRouter = createManagementRouter({
   readiness,
   linkedDeviceStatus,
   manualSend: (tenant, message) => senderForTenant(tenant).sendText(message),
+  moderatorEngine,
+  sseBroadcaster,
   runtimeSummary: () => ({
     service: 'whatsapp-ai-supervisor',
     ui: 'material3-operator',
-    tenantCount: config.tenants.length,
+    tenantCount: tenantStore.list().length,
     metaEnabled: config.meta.enabled,
     linkedDeviceEnabled: config.linkedDevice.enabled,
     browser: {
@@ -104,9 +151,12 @@ const server = createHttpServer({
   readiness,
   conversationStore,
   managementRouter,
+  sseBroadcaster,
   uiDir: config.uiDir
 });
 
 server.listen(config.port, config.host, () => {
   console.log(`whatsapp-ai-supervisor listening on http://${config.host}:${config.port}`);
 });
+
+const keepAliveTimer = setInterval(() => {}, 60_000);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { api } from '../api/client';
 import type { Conversation, Tenant } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
@@ -15,6 +15,7 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void api.tenants().then((result) => {
@@ -37,6 +38,10 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
   };
 
   useEffect(() => { void load(); }, [tenantId, refreshKey]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [selectedId, conversations]);
 
   const selected = conversations.find((item) => item.customerId === selectedId) ?? null;
   const filtered = useMemo(() => conversations.filter((item) => {
@@ -62,11 +67,32 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleModerate = async () => {
+    try {
+      setBusy(true);
+      setError('');
+      await api.triggerModerator({ tenantId });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return <>
-    <div className="page-header"><div><h1 className="page-title">Inbox</h1><p className="page-description">Real conversation activity with explicit AI or human control.</p></div></div>
+    <div className="page-header">
+      <div><h1 className="page-title">Inbox</h1><p className="page-description">Real conversation activity with explicit AI or human control.</p></div>
+      <button className="button" disabled={busy} onClick={() => void handleModerate()}>
+        <Icon name="smart" size={18} />
+        {busy ? 'Moderating...' : '⚡ Moderate Active Chats'}
+      </button>
+    </div>
     {error ? <div className="health-banner bad"><div><strong>Inbox action failed</strong><br /><span>{error}</span></div></div> : null}
     <div className="inbox-layout">
       <aside className="conversation-list">
@@ -97,13 +123,21 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
           <div className="thread-messages">
             {selected.messages.map((message) => <div key={message.id} className={`message ${message.direction}`}>
               {message.text ? <div className="message-text">{message.text}</div> : <div className="decision-only">No customer-facing text for this decision</div>}
+              {message.thinking ? <details className="thinking-details" style={{ margin: '8px 0', padding: '6px 10px', background: 'rgba(0,0,0,0.04)', borderRadius: 6, fontSize: '0.82rem' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 500, color: '#444' }}>💭 Agent Thinking & Reasoning</summary>
+                <div style={{ marginTop: 4, whiteSpace: 'pre-wrap', color: '#555' }}>{message.thinking}</div>
+              </details> : null}
+              {message.proactiveOffer ? <div style={{ fontSize: '0.8rem', color: '#0d652d', marginTop: 4, fontWeight: 500 }}>💡 Proactive: {message.proactiveOffer}</div> : null}
               <div className="message-meta">
                 <span>{formatDateTime(message.at)}</span>
+                {message.provider ? <span style={{ fontWeight: 600 }}>{message.provider}</span> : null}
+                {message.modelName ? <span>{message.modelName}</span> : null}
                 {message.intent ? <span>{message.intent}</span> : null}
                 {message.action ? <span>{message.action}</span> : null}
                 {message.confidence != null ? <span>{percent(message.confidence)}</span> : null}
               </div>
             </div>)}
+            <div ref={messagesEndRef} style={{ height: 1 }} />
           </div>
           <div className="composer">
             <textarea className="text-input" disabled={selected.control !== 'human' || busy} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={selected.control === 'human' ? 'Reply as a human operator' : 'Take over the conversation to reply manually'} />

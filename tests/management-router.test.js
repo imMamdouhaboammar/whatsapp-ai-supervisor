@@ -60,3 +60,118 @@ test('manual send requires human takeover', async () => {
     assert.equal(sent.length, 1);
   } finally { server.close(); }
 });
+
+test('management tenant CRUD and WhatsApp numbers API', async () => {
+  const tenants = new Map([
+    ['acme', { id: 'acme', businessContext: { name: 'Acme' }, whatsapp: { mode: 'cloud', numbers: [] }, ai: {}, policy: { rules: [] } }]
+  ]);
+  let persisted = false;
+
+  const mockStore = {
+    list: () => Array.from(tenants.values()),
+    findById: (id) => tenants.get(id) || null,
+    create: (data) => {
+      const t = { id: data.id || 'new-t', ...data, whatsapp: data.whatsapp || { mode: 'cloud' } };
+      tenants.set(t.id, t);
+      return t;
+    },
+    update: (id, patch) => {
+      const existing = tenants.get(id);
+      if (!existing) throw Object.assign(new Error('not_found'), { statusCode: 404 });
+      const updated = { ...existing, ...patch };
+      tenants.set(id, updated);
+      return updated;
+    },
+    delete: (id) => {
+      if (!tenants.has(id)) throw Object.assign(new Error('not_found'), { statusCode: 404 });
+      tenants.delete(id);
+      return true;
+    },
+    addWhatsAppNumber: (id, number) => {
+      const tenant = tenants.get(id);
+      if (!tenant) throw Object.assign(new Error('not_found'), { statusCode: 404 });
+      const num = { id: number.id || 'num-1', ...number };
+      tenant.whatsapp.numbers = [...(tenant.whatsapp.numbers || []), num];
+      return { tenant, number: num };
+    },
+    removeWhatsAppNumber: (id, numberId) => {
+      const tenant = tenants.get(id);
+      if (!tenant) throw Object.assign(new Error('not_found'), { statusCode: 404 });
+      tenant.whatsapp.numbers = (tenant.whatsapp.numbers || []).filter((n) => n.id !== numberId);
+      return tenant;
+    },
+    persist: () => { persisted = true; }
+  };
+
+  const router = createManagementRouter({
+    token: 'secret',
+    tenantStore: mockStore,
+    auditStore: { list: () => [] },
+    conversationStore: { list: () => [] },
+    readiness: async () => ({ ready: true }),
+    linkedDeviceStatus: async () => []
+  });
+
+  const server = createServer((req, res) => router(req, res, new URL(req.url, 'http://localhost')));
+  const base = await start(server);
+  const headers = { authorization: 'Bearer secret', 'content-type': 'application/json' };
+
+  try {
+    // 1. Create tenant via POST
+    const createRes = await fetch(`${base}/api/management/tenants`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ id: 'beta', businessContext: { name: 'Beta Corp' } })
+    });
+    assert.equal(createRes.status, 201);
+    const createdData = await createRes.json();
+    assert.equal(createdData.tenant.id, 'beta');
+    assert.equal(persisted, true);
+
+    // 2. Get created tenant
+    const getRes = await fetch(`${base}/api/management/tenants/beta`, { headers });
+    assert.equal(getRes.status, 200);
+    const getData = await getRes.json();
+    assert.equal(getData.tenant.id, 'beta');
+
+    // 3. Update tenant via PUT
+    const updateRes = await fetch(`${base}/api/management/tenants/beta`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ businessContext: { name: 'Beta Corp Updated' } })
+    });
+    assert.equal(updateRes.status, 200);
+
+    // 4. Add WhatsApp number
+    const addNumRes = await fetch(`${base}/api/management/tenants/beta/numbers`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ id: 'line-1', label: 'Support', mode: 'linked-device', sessionId: 'beta-supp' })
+    });
+    assert.equal(addNumRes.status, 201);
+
+    // 5. List numbers
+    const listNumRes = await fetch(`${base}/api/management/tenants/beta/numbers`, { headers });
+    assert.equal(listNumRes.status, 200);
+    const listNumData = await listNumRes.json();
+    assert.equal(listNumData.numbers.length, 1);
+    assert.equal(listNumData.numbers[0].id, 'line-1');
+
+    // 6. Delete number
+    const delNumRes = await fetch(`${base}/api/management/tenants/beta/numbers/line-1`, {
+      method: 'DELETE',
+      headers
+    });
+    assert.equal(delNumRes.status, 200);
+
+    // 7. Delete tenant
+    const delRes = await fetch(`${base}/api/management/tenants/beta`, {
+      method: 'DELETE',
+      headers
+    });
+    assert.equal(delRes.status, 200);
+    assert.equal(mockStore.findById('beta'), null);
+  } finally {
+    server.close();
+  }
+});

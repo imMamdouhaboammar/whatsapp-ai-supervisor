@@ -1,5 +1,7 @@
 # Architecture
 
+For the generated module-level view (import graph, hub modules, per-module test coverage), see [CODE_GRAPH.md](CODE_GRAPH.md), regenerated with `npm run graph`.
+
 ## Product boundary
 
 The supervisor has four independent concerns:

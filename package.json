@@ -8,6 +8,8 @@
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "test": "node --test",
     "check": "node --check src/server.js && node --test",
+    "graph": "node tools/code-graph.mjs",
+    "graph:check": "node tools/code-graph.mjs --check",
     "init": "node src/cli.js init",
     "doctor": "node --env-file-if-exists=.env src/cli.js doctor",
     "browser-worker": "node --env-file-if-exists=.env src/cli.js browser-worker",

@@ -78,7 +78,19 @@ export class WhatsAppWebSessionManager {
       authStrategy: new this.LocalAuth({ clientId: sessionId, dataPath: this.authDir }),
       puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote'
+        ]
+      },
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1045325264-alpha.html'
       }
     };
     if (definition?.pairingPhoneNumber) {
@@ -132,8 +144,19 @@ export class WhatsAppWebSessionManager {
       this.logger.info?.(`[whatsapp-web] session ${record.sessionId} pairing code: ${record.pairingCode}`);
     });
     client.on('authenticated', () => {
-      record.status = 'authenticated';
       record.lastError = null;
+      this.logger.info?.(`[whatsapp-web] session ${record.sessionId} authenticated`);
+      setTimeout(async () => {
+        try {
+          if (record.status !== 'ready') {
+            await client.pupPage?.evaluate(() => {
+              if (typeof window.onAppStateHasSyncedEvent === 'function') {
+                window.onAppStateHasSyncedEvent();
+              }
+            });
+          }
+        } catch {}
+      }, 1500);
     });
     client.on('ready', () => {
       record.status = 'ready';
@@ -157,12 +180,27 @@ export class WhatsAppWebSessionManager {
       record.lastError = String(reason ?? 'disconnected').slice(0, 300);
       this.scheduleReconnect(record);
     });
-    client.on('message', (msg) => {
+
+    const processedMsgIds = new Set();
+    const handleMsg = (msg) => {
+      const id = messageIdOf(msg);
+      if (id) {
+        if (processedMsgIds.has(id)) return;
+        processedMsgIds.add(id);
+        if (processedMsgIds.size > 5000) {
+          const first = processedMsgIds.values().next().value;
+          processedMsgIds.delete(first);
+        }
+      }
+      this.logger.info?.(`[whatsapp-web] session ${record.sessionId} raw message event: from=${msg?.from} to=${msg?.to} fromMe=${msg?.fromMe} type=${msg?.type} body="${String(msg?.body || '').slice(0, 30)}"`);
       void this.handleInbound(record, msg, definition).catch((error) => {
         record.lastError = String(error?.message ?? error).slice(0, 300);
         this.logger.error?.(`[whatsapp-web] inbound spool failed for ${record.sessionId}: ${record.lastError}`);
       });
-    });
+    };
+
+    client.on('message', handleMsg);
+    client.on('message_create', handleMsg);
   }
 
   scheduleReconnect(record) {
@@ -180,14 +218,20 @@ export class WhatsAppWebSessionManager {
 
   async handleInbound(record, msg, definition) {
     const from = String(msg?.from ?? '');
-    if (msg?.fromMe) return;
-    if (from === 'status@broadcast') return;
-    if (msg?.type !== 'chat') return;
-    const isGroup = isGroupAddress(from);
+    const to = String(msg?.to ?? '');
+    const isSelfChat = Boolean(msg?.fromMe && (from === to || (to && from.includes(to)) || (from && to.includes(from))));
+    const isGroup = isGroupAddress(from) || isGroupAddress(to);
+
+    if (msg?.fromMe && !isSelfChat) return;
+    if (from === 'status@broadcast' || to === 'status@broadcast') return;
+    if (msg?.type && msg.type !== 'chat' && msg.type !== 'text' && msg.type !== 'conversation') return;
     if (isGroup && definition?.allowGroups !== true) return;
+
     const id = messageIdOf(msg);
-    const text = typeof msg?.body === 'string' ? msg.body.trim() : '';
+    const text = typeof msg?.body === 'string' ? msg.body.trim() : (typeof msg?.text === 'string' ? msg.text.trim() : '');
     if (!id || !from || !text) return;
+
+    this.logger.info?.(`[whatsapp-web] session ${record.sessionId} received message: from=${from} to=${to} text="${text.slice(0, 40)}" isSelf=${isSelfChat}`);
 
     let customerName = null;
     if (typeof msg.getContact === 'function') {
@@ -201,32 +245,34 @@ export class WhatsAppWebSessionManager {
       sessionId: record.sessionId,
       message: {
         id,
-        from,
+        from: isSelfChat ? (to || from) : from,
         customerName,
         text,
-        timestamp: Number(msg.timestamp ?? 0),
+        timestamp: Number(msg.timestamp ?? Math.floor(Date.now() / 1000)),
         type: 'chat',
         fromMe: false,
         isGroup
       }
     });
-    await this.spool.flushOnce();
+    const flushRes = await this.spool.flushOnce();
+    this.logger.info?.(`[whatsapp-web] delivered to supervisor: ${flushRes?.delivered ?? 'ok'}`);
   }
 
   async sendText({ sessionId, to, text }) {
     const record = this.sessions.get(sessionId);
     if (!record) throw new Error('session_not_found');
-    if (record.status !== 'ready') throw new Error('session_not_ready');
+    if (record.status !== 'ready' && record.status !== 'authenticated') throw new Error('session_not_ready');
     if (!to || typeof text !== 'string' || !text.trim()) throw new Error('invalid_send_payload');
     if (record.pendingSends >= this.maxSendQueue) throw new Error('send_queue_full');
 
     record.pendingSends += 1;
     const operation = record.sendTail.then(async () => {
-      if (record.status !== 'ready') throw new Error('session_not_ready');
+      if (record.status !== 'ready' && record.status !== 'authenticated') throw new Error('session_not_ready');
       const elapsed = this.now() - record.lastSentAt;
       const waitMs = record.lastSentAt > 0 ? Math.max(0, this.minSendIntervalMs - elapsed) : 0;
       if (waitMs > 0) await this.sleep(waitMs);
-      const result = await record.client.sendMessage(to, text);
+      const target = to.includes('@') ? to : `${to}@c.us`;
+      const result = await record.client.sendMessage(target, text.trim());
       record.lastSentAt = this.now();
       return { id: result?.id?._serialized ?? null };
     });

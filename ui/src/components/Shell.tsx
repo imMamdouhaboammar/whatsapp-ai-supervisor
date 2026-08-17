@@ -3,7 +3,19 @@ import { Icon } from './Icon';
 import { navItems, type RouteKey } from '../app/nav';
 import '../styles/mobile-menu.css';
 
-export function Shell({ route, onRoute, onRefresh, children }: { route: RouteKey; onRoute: (route: RouteKey) => void; onRefresh: () => void; children: ReactNode }) {
+export function Shell({
+  route,
+  onRoute,
+  onRefresh,
+  realtimeConnected = false,
+  children
+}: {
+  route: RouteKey;
+  onRoute: (route: RouteKey) => void;
+  onRefresh: () => void;
+  realtimeConnected?: boolean;
+  children: ReactNode;
+}) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -41,7 +53,29 @@ export function Shell({ route, onRoute, onRefresh, children }: { route: RouteKey
             <button className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation menu"><Icon name="menu" /></button>
             <div><div className="topbar-title">{navItems.find((item) => item.key === route)?.label}</div><div className="topbar-subtitle">Operator console</div></div>
           </div>
-          <button className="icon-button" onClick={onRefresh} title="Refresh" aria-label="Refresh current page"><Icon name="refresh" /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '0.8rem',
+              fontWeight: 500,
+              padding: '4px 10px',
+              borderRadius: 12,
+              background: realtimeConnected ? '#e6f4ea' : '#fce8e6',
+              color: realtimeConnected ? '#137333' : '#c5221f'
+            }}>
+              <span style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: realtimeConnected ? '#34a853' : '#ea4335',
+                boxShadow: realtimeConnected ? '0 0 6px #34a853' : 'none'
+              }} />
+              <span>{realtimeConnected ? 'Live Real-Time' : 'Connecting...'}</span>
+            </div>
+            <button className="icon-button" onClick={onRefresh} title="Refresh" aria-label="Refresh current page"><Icon name="refresh" /></button>
+          </div>
         </header>
         <main className="content">{children}</main>
       </div>

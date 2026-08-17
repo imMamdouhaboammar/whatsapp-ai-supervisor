@@ -10,6 +10,7 @@ import { InboxPage } from '../pages/InboxPage';
 import { ActionsPage } from '../pages/ActionsPage';
 import { AuditPage } from '../pages/AuditPage';
 import { SettingsPage } from '../pages/SettingsPage';
+import { useRealtime } from '../hooks/useRealtime';
 
 function Login({ onAuthenticated }: { onAuthenticated: () => void }) {
   const [token, setToken] = useState(managementToken());
@@ -43,6 +44,13 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'login'>('checking');
 
+  const { connected: realtimeConnected } = useRealtime((event) => {
+    // When any live event arrives, trigger smooth state refresh across pages
+    if (event.type.startsWith('message:') || event.type.startsWith('whatsapp:')) {
+      setRefreshKey((value) => value + 1);
+    }
+  });
+
   useEffect(() => {
     const onHash = () => setRoute(routeFromHash());
     addEventListener('hashchange', onHash);
@@ -75,5 +83,5 @@ export function App() {
     }
   })();
 
-  return <Shell route={route} onRoute={navigate} onRefresh={() => setRefreshKey((value) => value + 1)}>{page}</Shell>;
+  return <Shell route={route} onRoute={navigate} onRefresh={() => setRefreshKey((value) => value + 1)} realtimeConnected={realtimeConnected}>{page}</Shell>;
 }

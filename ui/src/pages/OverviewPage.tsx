@@ -9,15 +9,47 @@ import { formatDateTime, percent } from '../app/format';
 export function OverviewPage({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
-  useEffect(() => { void api.overview().then(setData).catch((e) => setError(e.message)); }, [refreshKey]);
+  const [moderating, setModerating] = useState(false);
+  const [moderatorReport, setModeratorReport] = useState<string | null>(null);
+
+  const load = () => api.overview().then(setData).catch((e) => setError(e.message));
+  useEffect(() => { void load(); }, [refreshKey]);
+
+  const handleRunModerator = async (dryRun = false) => {
+    try {
+      setModerating(true);
+      setModeratorReport(null);
+      const res = await api.triggerModerator({ dryRun });
+      setModeratorReport(`✅ Moderator run complete: Scanned ${res.totalThreads} threads · Sent ${res.totalRepliesSent} replies · ${res.totalFollowupsSent} proactive follow-ups · ${res.totalHumanHandoffs} escalated to human.`);
+      await load();
+    } catch (err: any) {
+      setModeratorReport(`❌ Moderator execution failed: ${err.message}`);
+    } finally {
+      setModerating(false);
+    }
+  };
+
   if (error) return <EmptyState title="Overview unavailable" body={error} />;
   if (!data) return <div className="loading">Loading operational state...</div>;
 
   return <>
     <div className={`health-banner ${data.ready ? '' : 'bad'}`}>
       <div><strong>{data.ready ? 'Everything required is ready' : 'Supervisor needs attention'}</strong><br /><span>Generated {formatDateTime(data.generatedAt)}</span></div>
-      <Status value={data.ready ? 'ready' : 'degraded'} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button className="button" disabled={moderating} onClick={() => void handleRunModerator(false)}>
+          {moderating ? 'Running Agents...' : '⚡ Run Autonomous Moderator'}
+        </button>
+        <button className="button tonal" disabled={moderating} onClick={() => void handleRunModerator(true)} title="Simulate without sending messages">
+          Dry Run
+        </button>
+        <Status value={data.ready ? 'ready' : 'degraded'} />
+      </div>
     </div>
+
+    {moderatorReport ? <div className="health-banner" style={{ background: '#e6f4ea', borderColor: '#34a853', color: '#137333', marginBottom: 16 }}>
+      <div><strong>Autonomous Moderator Result</strong><br /><span>{moderatorReport}</span></div>
+    </div> : null}
+
     <div className="metrics">
       <Metric label="Tenants" value={data.metrics.tenants} />
       <Metric label="WhatsApp online" value={data.metrics.whatsappOnline} note={`${data.metrics.tenants} configured`} />

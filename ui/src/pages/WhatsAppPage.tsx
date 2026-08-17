@@ -18,8 +18,10 @@ export function WhatsAppPage({ refreshKey }: { refreshKey: number }) {
     <div className="page-header"><div><h1 className="page-title">WhatsApp</h1><p className="page-description">Cloud API configuration and live linked-device pairing state.</p></div><button className="button tonal" onClick={() => void load()}><Icon name="refresh" size={18} />Refresh</button></div>
     {sessions.length ? <div className="session-grid">{sessions.map((session) => {
       const tenant = byTenant.get(session.tenantId);
-      return <article className="session-card" key={session.tenantId}>
-        <div className="session-head"><div><div className="session-title">{tenant?.name ?? session.tenantId}</div><div className="session-meta">{session.mode === 'cloud' ? 'WhatsApp Cloud API' : `Linked device · ${session.sessionId}`}</div></div><Status value={session.status} /></div>
+      const key = `${session.tenantId}-${session.sessionId ?? session.phoneNumberId ?? 'primary'}`;
+      const title = tenant ? (session.sessionId ? `${tenant.name} (${session.sessionId})` : tenant.name) : session.tenantId;
+      return <article className="session-card" key={key}>
+        <div className="session-head"><div><div className="session-title">{title}</div><div className="session-meta">{session.mode === 'cloud' ? 'WhatsApp Cloud API' : `Linked device · ${session.sessionId}`}</div></div><Status value={session.status} /></div>
         {session.qr ? <div className="qr-box"><QRCodeSVG value={session.qr} size={176} level="M" /></div> : null}
         {session.pairingCode ? <div className="pairing-code">{session.pairingCode}</div> : null}
         {session.mode === 'cloud' ? <div className="empty-state" style={{ minHeight: 140 }}><strong>Managed through Meta</strong><span>Inbound webhooks and outbound Graph API messaging are configured for this tenant.</span></div> : null}

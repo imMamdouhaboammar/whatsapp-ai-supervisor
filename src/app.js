@@ -41,6 +41,7 @@ export function createHttpServer({
   linkedDeviceIngressToken = null,
   conversationStore = null,
   managementRouter = null,
+  sseBroadcaster = null,
   uiDir = null
 }) {
   const claimedMessages = new Set();
@@ -59,6 +60,14 @@ export function createHttpServer({
     const normalizedMessage = { ...message, tenantId: tenant.id };
     try {
       conversationStore?.recordInbound(normalizedMessage);
+      sseBroadcaster?.broadcast('message:inbound', {
+        tenantId: tenant.id,
+        customerId: normalizedMessage.customerId,
+        customerName: normalizedMessage.customerName,
+        text: normalizedMessage.text,
+        messageId: normalizedMessage.id,
+        at: new Date().toISOString()
+      });
 
       if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
         const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
@@ -75,11 +84,27 @@ export function createHttpServer({
           result: { action: 'human', reason: 'human_takeover', wouldAction: null }
         });
         conversationStore?.recordDecision(normalizedMessage, result, at);
+        sseBroadcaster?.broadcast('message:decision', {
+          tenantId: tenant.id,
+          customerId: normalizedMessage.customerId,
+          customerName: normalizedMessage.customerName,
+          messageId: normalizedMessage.id,
+          result,
+          at
+        });
         return { processed: 1, duplicates: 0, failures: [] };
       }
 
       const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
       conversationStore?.recordDecision(normalizedMessage, result);
+      sseBroadcaster?.broadcast('message:decision', {
+        tenantId: tenant.id,
+        customerId: normalizedMessage.customerId,
+        customerName: normalizedMessage.customerName,
+        messageId: normalizedMessage.id,
+        result,
+        at: new Date().toISOString()
+      });
       return { processed: 1, duplicates: 0, failures: [] };
     } catch (error) {
       await claims.release(claimKey);

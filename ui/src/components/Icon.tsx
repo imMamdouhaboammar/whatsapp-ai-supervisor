@@ -1,6 +1,6 @@
 import type { SVGProps } from 'react';
 
-type IconName = 'overview' | 'tenants' | 'whatsapp' | 'inbox' | 'actions' | 'audit' | 'settings' | 'refresh' | 'menu' | 'chevron' | 'check' | 'warning' | 'search' | 'send' | 'person' | 'smart' | 'copy' | 'close';
+type IconName = 'overview' | 'tenants' | 'whatsapp' | 'inbox' | 'actions' | 'audit' | 'settings' | 'refresh' | 'menu' | 'chevron' | 'check' | 'warning' | 'search' | 'send' | 'person' | 'smart' | 'copy' | 'close' | 'add' | 'edit' | 'delete';
 
 const paths: Record<IconName, string[]> = {
   overview: ['M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z'],
@@ -20,7 +20,10 @@ const paths: Record<IconName, string[]> = {
   person: ['M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v3h16v-3c0-2.76-3.58-5-8-5Z'],
   smart: ['M7 2h10v2h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2v2H7v-2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V2Zm-2 4v12h14V6H5Zm4 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm-6 5h6v2H9v-2Z'],
   copy: ['M8 8h10v12H8V8Zm-2 8H4V4h10v2H6v10Z'],
-  close: ['M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5Z']
+  close: ['M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5Z'],
+  add: ['M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z'],
+  edit: ['M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z'],
+  delete: ['M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12ZM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4Z']
 };
 
 export function Icon({ name, size = 20, ...props }: SVGProps<SVGSVGElement> & { name: IconName; size?: number }) {

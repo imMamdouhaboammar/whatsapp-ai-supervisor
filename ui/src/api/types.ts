@@ -1,6 +1,20 @@
 export type TransportMode = 'cloud' | 'linked-device';
 export type ConversationControl = 'ai' | 'human';
 
+export interface WhatsAppNumber {
+  id: string;
+  label: string;
+  mode: TransportMode;
+  // linked-device
+  sessionId?: string | null;
+  workerUrl?: string | null;
+  workerTokenEnv?: string | null;
+  allowGroups?: boolean;
+  // cloud
+  phoneNumberId?: string | null;
+  accessTokenEnv?: string | null;
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -9,11 +23,31 @@ export interface Tenant {
     phoneNumberId: string | null;
     sessionId: string | null;
     allowGroups: boolean;
+    numbers?: WhatsAppNumber[];
   };
   ai: { provider: string; route: string; model: string | null };
   shadowMode: boolean;
   policy: { ruleCount: number; browserCapabilities: number };
 }
+
+export interface TenantCreatePayload {
+  id?: string;
+  businessContext: { name: string; language?: string; facts?: string[] };
+  whatsapp?: {
+    mode?: TransportMode;
+    sessionId?: string;
+    workerUrl?: string;
+    workerTokenEnv?: string;
+    allowGroups?: boolean;
+    phoneNumberId?: string;
+    numbers?: WhatsAppNumber[];
+  };
+  ai?: { apiKeyEnv?: string; route?: string; provider?: string; model?: string };
+  policy?: { minConfidence?: number; defaultAction?: string; rules?: object[] };
+  shadowMode?: boolean;
+}
+
+export type TenantUpdatePayload = Partial<TenantCreatePayload>;
 
 export interface WhatsAppSession {
   tenantId: string;
@@ -33,7 +67,7 @@ export interface AuditEvent {
   customerId: string;
   messageId?: string;
   at: string;
-  model?: { intent?: string; confidence?: number; reply?: string; requestedAction?: string } | null;
+  model?: { intent?: string; confidence?: number; reply?: string; requestedAction?: string; thinking?: string | null; proactiveOffer?: string | null; provider?: string; model?: string } | null;
   permission?: { action?: string; reason?: string } | null;
   result?: { action?: string; reason?: string; wouldAction?: string | null } | null;
 }
@@ -52,6 +86,10 @@ export interface ConversationMessage {
   reason?: string | null;
   intent?: string | null;
   confidence?: number | null;
+  thinking?: string | null;
+  proactiveOffer?: string | null;
+  modelName?: string | null;
+  provider?: string | null;
 }
 
 export interface Conversation {
@@ -104,3 +142,4 @@ export interface RuntimeInfo {
   managementAuth: boolean;
   readiness: Record<string, unknown> & { ready?: boolean; status?: string };
 }
+

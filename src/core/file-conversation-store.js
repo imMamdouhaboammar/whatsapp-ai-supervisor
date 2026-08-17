@@ -74,7 +74,11 @@ export class FileConversationStore {
       wouldAction: result?.wouldAction ?? null,
       reason: result?.reason ?? null,
       intent: model?.intent ?? permission?.intent ?? null,
-      confidence: Number.isFinite(model?.confidence) ? model.confidence : null
+      confidence: Number.isFinite(model?.confidence) ? model.confidence : null,
+      thinking: cleanText(model?.thinking),
+      proactiveOffer: cleanText(model?.proactiveOffer),
+      modelName: model?.model ?? null,
+      provider: model?.provider ?? null
     });
   }
 

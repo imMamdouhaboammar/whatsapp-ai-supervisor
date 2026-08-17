@@ -22,9 +22,12 @@ async function readJson(req, limit = 128_000) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
-function authorized(req, token) {
+function authorized(req, token, url = null) {
   if (!token) return true;
-  const actual = Buffer.from(String(req.headers.authorization ?? ''));
+  const authHeader = String(req.headers.authorization ?? '');
+  const queryToken = url?.searchParams?.get('token') ? `Bearer ${url.searchParams.get('token')}` : '';
+  const candidate = authHeader || queryToken;
+  const actual = Buffer.from(candidate);
   const expected = Buffer.from(`Bearer ${token}`);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
@@ -35,6 +38,22 @@ function requireTenant(tenantStore, tenantId) {
   return tenant;
 }
 
+/** Extract :segment from a pathname pattern like /api/management/tenants/:id */
+function matchPath(pathname, pattern) {
+  const patParts = pattern.split('/');
+  const urlParts = pathname.split('/');
+  if (patParts.length !== urlParts.length) return null;
+  const params = {};
+  for (let i = 0; i < patParts.length; i++) {
+    if (patParts[i].startsWith(':')) {
+      params[patParts[i].slice(1)] = decodeURIComponent(urlParts[i]);
+    } else if (patParts[i] !== urlParts[i]) {
+      return null;
+    }
+  }
+  return params;
+}
+
 export function createManagementRouter({
   token = null,
   tenantStore,
@@ -43,22 +62,104 @@ export function createManagementRouter({
   readiness,
   linkedDeviceStatus,
   manualSend,
+  moderatorEngine = null,
+  sseBroadcaster = null,
   runtimeSummary = () => ({})
 }) {
   return async function handleManagementRequest(req, res, url) {
     if (!url.pathname.startsWith('/api/management/')) return false;
 
     if (req.method === 'GET' && url.pathname === '/api/management/session') {
-      if (!authorized(req, token)) return sendJson(res, 401, { authenticated: false, authRequired: true });
+      if (!authorized(req, token, url)) return sendJson(res, 401, { authenticated: false, authRequired: true });
       return sendJson(res, 200, { authenticated: true, authRequired: Boolean(token) });
     }
 
-    if (!authorized(req, token)) return sendJson(res, 401, { error: 'management_unauthorized' });
+    if (req.method === 'GET' && url.pathname === '/api/management/events') {
+      if (!authorized(req, token, url)) return sendJson(res, 401, { error: 'management_unauthorized' });
+      if (!sseBroadcaster) return sendJson(res, 503, { error: 'realtime_unavailable' });
+      sseBroadcaster.addClient(res);
+      return true;
+    }
+
+    if (!authorized(req, token, url)) return sendJson(res, 401, { error: 'management_unauthorized' });
 
     try {
+      // ── tenant list ──────────────────────────────────────────────────────────
       if (req.method === 'GET' && url.pathname === '/api/management/tenants') {
         return sendJson(res, 200, { tenants: tenantStore.list().map(sanitizeTenant) });
       }
+
+      // ── tenant create ────────────────────────────────────────────────────────
+      if (req.method === 'POST' && url.pathname === '/api/management/tenants') {
+        const body = await readJson(req);
+        const tenant = tenantStore.create(body);
+        tenantStore.persist();
+        return sendJson(res, 201, { tenant: sanitizeTenant(tenant) });
+      }
+
+      // ── tenant get by id ─────────────────────────────────────────────────────
+      const tenantIdMatch = matchPath(url.pathname, '/api/management/tenants/:id');
+      if (tenantIdMatch) {
+        const { id } = tenantIdMatch;
+
+        if (req.method === 'GET') {
+          const tenant = requireTenant(tenantStore, id);
+          return sendJson(res, 200, { tenant: sanitizeTenant(tenant) });
+        }
+
+        // ── tenant update ──────────────────────────────────────────────────────
+        if (req.method === 'PUT' || req.method === 'PATCH') {
+          const body = await readJson(req);
+          const tenant = tenantStore.update(id, body);
+          tenantStore.persist();
+          return sendJson(res, 200, { tenant: sanitizeTenant(tenant) });
+        }
+
+        // ── tenant delete ──────────────────────────────────────────────────────
+        if (req.method === 'DELETE') {
+          tenantStore.delete(id);
+          tenantStore.persist();
+          return sendJson(res, 200, { deleted: true, id });
+        }
+      }
+
+      // ── WhatsApp numbers list + add ──────────────────────────────────────────
+      const waNumbersMatch = matchPath(url.pathname, '/api/management/tenants/:id/numbers');
+      if (waNumbersMatch) {
+        const { id } = waNumbersMatch;
+
+        if (req.method === 'GET') {
+          const tenant = requireTenant(tenantStore, id);
+          const numbers = Array.isArray(tenant.whatsapp?.numbers)
+            ? tenant.whatsapp.numbers
+            : tenant.whatsapp?.sessionId
+              ? [{ id: 'primary', label: 'Primary', mode: 'linked-device', sessionId: tenant.whatsapp.sessionId, workerUrl: tenant.whatsapp.workerUrl }]
+              : tenant.phoneNumberId
+                ? [{ id: 'primary', label: 'Primary', mode: 'cloud', phoneNumberId: tenant.phoneNumberId }]
+                : [];
+          return sendJson(res, 200, { tenantId: id, numbers });
+        }
+
+        if (req.method === 'POST') {
+          const body = await readJson(req);
+          const { tenant, number } = tenantStore.addWhatsAppNumber(id, body);
+          tenantStore.persist();
+          return sendJson(res, 201, { tenant: sanitizeTenant(tenant), number });
+        }
+      }
+
+      // ── WhatsApp number delete ───────────────────────────────────────────────
+      const waNumberMatch = matchPath(url.pathname, '/api/management/tenants/:id/numbers/:numberId');
+      if (waNumberMatch) {
+        const { id, numberId } = waNumberMatch;
+        if (req.method === 'DELETE') {
+          const tenant = tenantStore.removeWhatsAppNumber(id, numberId);
+          tenantStore.persist();
+          return sendJson(res, 200, { deleted: true, tenantId: id, numberId, tenant: sanitizeTenant(tenant) });
+        }
+      }
+
+      // ── existing routes ──────────────────────────────────────────────────────
 
       if (req.method === 'GET' && url.pathname === '/api/management/whatsapp') {
         return sendJson(res, 200, { sessions: await linkedDeviceStatus() });
@@ -123,6 +224,19 @@ export function createManagementRouter({
         return sendJson(res, 200, { actions: buildActions(events) });
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/management/moderator/trigger') {
+        if (!moderatorEngine) return sendJson(res, 503, { error: 'moderator_engine_unavailable' });
+        const body = await readJson(req);
+        const tenantId = body.tenantId ? String(body.tenantId).trim() : null;
+        const dryRun = Boolean(body.dryRun);
+        const forceAll = Boolean(body.forceAll);
+        const proactiveLimit = Number(body.proactiveLimit) || 10;
+
+        if (tenantId) requireTenant(tenantStore, tenantId);
+        const report = await moderatorEngine.moderateAll({ tenantId, dryRun, forceAll, proactiveLimit });
+        return sendJson(res, 200, report);
+      }
+
       if (req.method === 'GET' && url.pathname === '/api/management/runtime') {
         return sendJson(res, 200, {
           ...runtimeSummary(),
@@ -136,10 +250,12 @@ export function createManagementRouter({
       if (error instanceof SyntaxError) return sendJson(res, 400, { error: 'invalid_json' });
       if (error?.message === 'request_body_too_large') return sendJson(res, 413, { error: error.message });
       if (error?.message === 'invalid_conversation_control_mode') return sendJson(res, 400, { error: error.message });
-      return sendJson(res, error?.statusCode ?? 500, {
-        error: error?.statusCode ? error.message : 'management_internal_error',
+      const statusCode = Number(error?.statusCode || error?.status) || 500;
+      return sendJson(res, statusCode, {
+        error: error?.message || 'management_internal_error',
         detail: error?.statusCode ? undefined : String(error?.message ?? error)
       });
     }
   };
 }
+

@@ -11,14 +11,29 @@ export function loadWorkerConfig({ cwd = process.cwd(), env = process.env } = {}
   const tenantsFile = resolve(cwd, env.TENANTS_FILE ?? './config/tenants.json');
   const tenants = JSON.parse(readFileSync(tenantsFile, 'utf8'));
   if (!Array.isArray(tenants)) throw new Error('Tenant configuration must be an array');
-  const sessions = tenants
-    .filter((tenant) => String(tenant?.whatsapp?.mode ?? 'cloud').toLowerCase() === 'linked-device')
-    .map((tenant) => ({
-      tenantId: tenant.id,
-      sessionId: String(tenant.whatsapp.sessionId ?? '').trim(),
-      allowGroups: tenant.whatsapp.allowGroups === true,
-      pairingPhoneNumber: tenant.whatsapp.pairingPhoneNumber ? String(tenant.whatsapp.pairingPhoneNumber) : null
-    }));
+  const sessions = [];
+  for (const tenant of tenants) {
+    if (Array.isArray(tenant?.whatsapp?.numbers) && tenant.whatsapp.numbers.length > 0) {
+      for (const num of tenant.whatsapp.numbers) {
+        if (num.mode === 'linked-device' && num.sessionId) {
+          sessions.push({
+            tenantId: tenant.id,
+            sessionId: String(num.sessionId).trim(),
+            allowGroups: num.allowGroups === true,
+            pairingPhoneNumber: num.pairingPhoneNumber ? String(num.pairingPhoneNumber) : null
+          });
+        }
+      }
+    } else if (String(tenant?.whatsapp?.mode ?? 'cloud').toLowerCase() === 'linked-device' && tenant?.whatsapp?.sessionId) {
+      sessions.push({
+        tenantId: tenant.id,
+        sessionId: String(tenant.whatsapp.sessionId ?? '').trim(),
+        allowGroups: tenant.whatsapp.allowGroups === true,
+        pairingPhoneNumber: tenant.whatsapp.pairingPhoneNumber ? String(tenant.whatsapp.pairingPhoneNumber) : null
+      });
+    }
+  }
+
   if (sessions.length === 0) throw new Error('No linked-device tenant sessions configured');
   for (const session of sessions) {
     if (!/^[-_a-z0-9]+$/i.test(session.sessionId)) throw new Error(`Invalid linked-device sessionId: ${session.sessionId}`);

@@ -51,7 +51,11 @@ const flushTimer = setInterval(() => {
     console.error(`[whatsapp-web] periodic spool flush failed: ${error?.message ?? error}`);
   });
 }, Math.max(1_000, config.spoolFlushIntervalMs));
-flushTimer.unref();
+
+// Keep event loop active
+if (process.stdin.isTTY) {
+  process.stdin.resume();
+}
 
 async function shutdown(signal) {
   console.log(`[whatsapp-web] received ${signal}, shutting down`);

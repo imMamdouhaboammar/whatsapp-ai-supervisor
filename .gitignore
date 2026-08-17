@@ -6,3 +6,6 @@ coverage
 
 data
 config/tenants.json
+.wwebjs_cache
+.wwebjs_auth
+.DS_Store
