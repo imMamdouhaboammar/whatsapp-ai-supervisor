@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 66,
-  "edgeCount": 114,
+  "moduleCount": 75,
+  "edgeCount": 127,
   "cycles": [],
   "nodes": [
     {
@@ -176,7 +176,7 @@
     {
       "id": "src/app.js",
       "group": "http",
-      "lines": 254,
+      "lines": 245,
       "exports": [
         {
           "kind": "function",
@@ -187,6 +187,7 @@
         "src/channels/whatsapp-cloud.js",
         "src/channels/whatsapp-linked-device.js",
         "src/domain/domain-event.js",
+        "src/jobs/inbound-decision-handler.js",
         "src/management/static-ui.js"
       ],
       "importedBy": [
@@ -199,6 +200,8 @@
       "tests": [
         "tests/app-decision-events.test.js",
         "tests/app-domain-events.test.js",
+        "tests/app-durable-domain-events.test.js",
+        "tests/app-durable-queue.test.js",
         "tests/app-realtime-domain-events.test.js",
         "tests/app.test.js"
       ]
@@ -450,7 +453,7 @@
     {
       "id": "src/config.js",
       "group": "runtime",
-      "lines": 122,
+      "lines": 147,
       "exports": [
         {
           "kind": "function",
@@ -472,7 +475,8 @@
         "node:path"
       ],
       "tests": [
-        "tests/config-browser.test.js"
+        "tests/config-browser.test.js",
+        "tests/postgres-runtime-wiring.test.js"
       ]
     },
     {
@@ -529,7 +533,7 @@
       ],
       "imports": [],
       "importedBy": [
-        "src/server.js"
+        "src/storage/storage-runtime.js"
       ],
       "external": [
         "node:crypto",
@@ -641,13 +645,17 @@
       "imports": [],
       "importedBy": [
         "src/app.js",
-        "src/realtime/sse-broadcaster.js"
+        "src/jobs/inbound-decision-handler.js",
+        "src/realtime/sse-broadcaster.js",
+        "src/storage/postgres-domain-event-store.js"
       ],
       "external": [
         "node:crypto"
       ],
       "tests": [
         "tests/domain-event.test.js",
+        "tests/postgres-domain-event-store.test.js",
+        "tests/postgres-integration.mjs",
         "tests/realtime-domain-events.test.js"
       ]
     },
@@ -692,6 +700,93 @@
       ],
       "external": [],
       "tests": []
+    },
+    {
+      "id": "src/jobs/durable-inbound-runtime.js",
+      "group": "other",
+      "lines": 32,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "createInboundProcessingRuntime"
+        }
+      ],
+      "imports": [
+        "src/jobs/durable-job-worker.js",
+        "src/jobs/inbound-decision-handler.js"
+      ],
+      "importedBy": [
+        "src/server.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/durable-inbound-runtime.test.js"
+      ]
+    },
+    {
+      "id": "src/jobs/durable-job-worker.js",
+      "group": "other",
+      "lines": 63,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "DurableJobWorker"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/jobs/durable-inbound-runtime.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/durable-job-worker.test.js"
+      ]
+    },
+    {
+      "id": "src/jobs/inbound-decision-handler.js",
+      "group": "other",
+      "lines": 89,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "createInboundDecisionHandler"
+        },
+        {
+          "kind": "function",
+          "name": "createProcessInboundJobHandler"
+        }
+      ],
+      "imports": [
+        "src/domain/domain-event.js"
+      ],
+      "importedBy": [
+        "src/app.js",
+        "src/jobs/durable-inbound-runtime.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/inbound-decision-handler.test.js"
+      ]
+    },
+    {
+      "id": "src/jobs/postgres-job-queue.js",
+      "group": "other",
+      "lines": 159,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "PostgresJobQueue"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/postgres-durable-runtime.test.js",
+        "tests/postgres-integration.mjs"
+      ]
     },
     {
       "id": "src/management/dashboard.js",
@@ -838,6 +933,25 @@
       ]
     },
     {
+      "id": "src/runtime/durable-service-lifecycle.js",
+      "group": "runtime",
+      "lines": 27,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "createDurableServiceLifecycle"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/server.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/durable-service-lifecycle.test.js"
+      ]
+    },
+    {
       "id": "src/runtime/init-local.js",
       "group": "runtime",
       "lines": 42,
@@ -876,7 +990,8 @@
       ],
       "imports": [],
       "importedBy": [
-        "src/server.js"
+        "src/server.js",
+        "src/storage/storage-runtime.js"
       ],
       "external": [
         "node:crypto",
@@ -910,7 +1025,7 @@
     {
       "id": "src/server.js",
       "group": "entry",
-      "lines": 152,
+      "lines": 188,
       "exports": [],
       "imports": [
         "src/actions/action-gateway.js",
@@ -924,15 +1039,17 @@
         "src/channels/whatsapp-sender-factory.js",
         "src/config.js",
         "src/core/file-audit-store.js",
-        "src/core/file-claim-store.js",
         "src/core/file-conversation-store.js",
         "src/core/orchestrator.js",
         "src/core/tenant-store.js",
+        "src/jobs/durable-inbound-runtime.js",
         "src/management/linked-device-status.js",
         "src/management/router.js",
         "src/realtime/sse-broadcaster.js",
+        "src/runtime/durable-service-lifecycle.js",
         "src/runtime/readiness.js",
-        "src/runtime/tenant-runtime-cache.js"
+        "src/runtime/tenant-runtime-cache.js",
+        "src/storage/storage-runtime.js"
       ],
       "importedBy": [
         "src/cli.js"
@@ -941,6 +1058,102 @@
         "node:path"
       ],
       "tests": []
+    },
+    {
+      "id": "src/storage/postgres-claim-store.js",
+      "group": "other",
+      "lines": 26,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "PostgresClaimStore"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/postgres-durable-runtime.test.js",
+        "tests/postgres-integration.mjs"
+      ]
+    },
+    {
+      "id": "src/storage/postgres-domain-event-store.js",
+      "group": "other",
+      "lines": 80,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "PostgresDomainEventStore"
+        }
+      ],
+      "imports": [
+        "src/domain/domain-event.js"
+      ],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/postgres-domain-event-store.test.js",
+        "tests/postgres-integration.mjs"
+      ]
+    },
+    {
+      "id": "src/storage/postgres-migrations.js",
+      "group": "other",
+      "lines": 58,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "runPostgresMigrations"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [
+        "node:fs/promises",
+        "node:path",
+        "node:url"
+      ],
+      "tests": [
+        "tests/postgres-integration.mjs",
+        "tests/postgres-runtime-wiring.test.js"
+      ]
+    },
+    {
+      "id": "src/storage/storage-runtime.js",
+      "group": "other",
+      "lines": 73,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "createStorageRuntime"
+        }
+      ],
+      "imports": [
+        "src/core/file-claim-store.js",
+        "src/jobs/postgres-job-queue.js",
+        "src/runtime/readiness.js",
+        "src/storage/postgres-claim-store.js",
+        "src/storage/postgres-domain-event-store.js",
+        "src/storage/postgres-migrations.js"
+      ],
+      "importedBy": [
+        "src/server.js"
+      ],
+      "external": [
+        "node:crypto",
+        "node:os",
+        "pg"
+      ],
+      "tests": [
+        "tests/postgres-runtime-wiring.test.js"
+      ]
     },
     {
       "id": "workers/whatsapp-web/src/config.js",
@@ -1680,6 +1893,10 @@
     },
     {
       "from": "src/app.js",
+      "to": "src/jobs/inbound-decision-handler.js"
+    },
+    {
+      "from": "src/app.js",
       "to": "src/management/static-ui.js"
     },
     {
@@ -1751,6 +1968,18 @@
       "to": "src/domain/types.js"
     },
     {
+      "from": "src/jobs/durable-inbound-runtime.js",
+      "to": "src/jobs/durable-job-worker.js"
+    },
+    {
+      "from": "src/jobs/durable-inbound-runtime.js",
+      "to": "src/jobs/inbound-decision-handler.js"
+    },
+    {
+      "from": "src/jobs/inbound-decision-handler.js",
+      "to": "src/domain/domain-event.js"
+    },
+    {
       "from": "src/management/dashboard.js",
       "to": "src/channels/whatsapp-linked-device.js"
     },
@@ -1781,10 +2010,6 @@
     {
       "from": "src/server.js",
       "to": "src/core/file-audit-store.js"
-    },
-    {
-      "from": "src/server.js",
-      "to": "src/core/file-claim-store.js"
     },
     {
       "from": "src/server.js",
@@ -1832,6 +2057,18 @@
     },
     {
       "from": "src/server.js",
+      "to": "src/runtime/durable-service-lifecycle.js"
+    },
+    {
+      "from": "src/server.js",
+      "to": "src/storage/storage-runtime.js"
+    },
+    {
+      "from": "src/server.js",
+      "to": "src/jobs/durable-inbound-runtime.js"
+    },
+    {
+      "from": "src/server.js",
       "to": "src/management/router.js"
     },
     {
@@ -1845,6 +2082,34 @@
     {
       "from": "src/server.js",
       "to": "src/realtime/sse-broadcaster.js"
+    },
+    {
+      "from": "src/storage/postgres-domain-event-store.js",
+      "to": "src/domain/domain-event.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/core/file-claim-store.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/runtime/readiness.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/storage/postgres-claim-store.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/storage/postgres-domain-event-store.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/jobs/postgres-job-queue.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/storage/postgres-migrations.js"
     },
     {
       "from": "workers/whatsapp-web/src/index.js",
