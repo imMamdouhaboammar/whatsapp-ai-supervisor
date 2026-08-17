@@ -83,3 +83,34 @@ test('DurableJobWorker polling loop stops through AbortSignal and does not busy-
   assert.equal(claims, 1);
   assert.equal(sleeps, 1);
 });
+
+test('DurableJobWorker backs off and continues after a transient queue infrastructure failure', async () => {
+  let claims = 0;
+  const sleeps = [];
+  const infrastructureSignals = [];
+  const controller = new AbortController();
+  const worker = new DurableJobWorker({
+    queue: {
+      async claimNext() {
+        claims += 1;
+        if (claims === 1) throw new Error('postgres://secret@db/internal');
+        return null;
+      }
+    },
+    handlers: {},
+    pollMs: 25,
+    infrastructureBackoffMs: 1000,
+    onInfrastructureError: (code) => infrastructureSignals.push(code),
+    sleep: async (ms) => {
+      sleeps.push(ms);
+      if (claims >= 2) controller.abort();
+    }
+  });
+
+  await worker.run({ signal: controller.signal });
+
+  assert.equal(claims, 2);
+  assert.deepEqual(sleeps, [1000, 25]);
+  assert.deepEqual(infrastructureSignals, ['queue_unavailable']);
+  assert.equal(infrastructureSignals.join(' ').includes('secret'), false);
+});
