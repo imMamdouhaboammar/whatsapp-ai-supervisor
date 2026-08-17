@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { normalizeWhatsAppWebhook, validateMetaSignature, verifyWebhookChallenge } from './channels/whatsapp-cloud.js';
 import { normalizeLinkedDeviceInbound } from './channels/whatsapp-linked-device.js';
-import { createDomainEvent, deriveDomainEvent } from './domain/domain-event.js';
+import { createDomainEvent } from './domain/domain-event.js';
+import { createInboundDecisionHandler } from './jobs/inbound-decision-handler.js';
 import { serveStaticUi } from './management/static-ui.js';
 
 function sendJson(res, status, body) {
@@ -55,24 +56,6 @@ function createInboundDomainEvent(message, tenant, connectorId) {
   });
 }
 
-function createDecisionDomainEvent(inboundEvent, result) {
-  const idempotencyRoot = inboundEvent.idempotencyKey ?? inboundEvent.eventId;
-  return deriveDomainEvent(inboundEvent, {
-    eventType: 'decision.completed',
-    idempotencyKey: `${idempotencyRoot}:decision.completed`,
-    actor: { type: 'ai', id: 'supervisor' },
-    payload: {
-      action: result.action,
-      wouldAction: result.wouldAction ?? null,
-      reason: result.reason ?? null,
-      intent: result.model?.intent ?? null,
-      confidence: result.model?.confidence ?? null,
-      provider: result.model?.provider ?? null,
-      model: result.model?.model ?? null
-    }
-  });
-}
-
 export function createHttpServer({
   verifyToken,
   appSecret,
@@ -82,6 +65,7 @@ export function createHttpServer({
   claimStore = null,
   domainEventStore = null,
   jobQueue = null,
+  inboundDecisionHandler = null,
   readiness = null,
   linkedDeviceIngressToken = null,
   managementToken = null,
@@ -99,35 +83,13 @@ export function createHttpServer({
     },
     async release(key) { claimedMessages.delete(key); }
   };
-
-  async function processDecision(normalizedMessage, tenant, inboundDomainEvent) {
-    if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
-      const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
-      const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
-      const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
-      auditStore.append({
-        id: crypto.randomUUID(),
-        tenantId: tenant.id,
-        messageId: normalizedMessage.id,
-        customerId: normalizedMessage.customerId,
-        channel: normalizedMessage.channel,
-        at: decisionDomainEvent.occurredAt,
-        model: null,
-        permission: result.permission,
-        result: { action: 'human', reason: 'human_takeover', wouldAction: null }
-      });
-      conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
-      sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
-      return result;
-    }
-
-    const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
-    const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
-    const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
-    conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
-    sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
-    return result;
-  }
+  const handleInboundDecision = inboundDecisionHandler ?? createInboundDecisionHandler({
+    orchestratorForTenant,
+    auditStore,
+    conversationStore,
+    domainEventStore,
+    sseBroadcaster
+  });
 
   async function processMessage(message, tenant, connectorId) {
     const claimKey = `${tenant.id}:${message.id}`;
@@ -151,7 +113,7 @@ export function createHttpServer({
         return { processed: 1, queued: 1, duplicates: 0, failures: [] };
       }
 
-      await processDecision(normalizedMessage, tenant, inboundDomainEvent);
+      await handleInboundDecision({ message: normalizedMessage, tenant, inboundEvent: inboundDomainEvent });
       return { processed: 1, queued: 0, duplicates: 0, failures: [] };
     } catch {
       await claims.release(claimKey);
