@@ -56,8 +56,10 @@ function createInboundDomainEvent(message, tenant, connectorId) {
 }
 
 function createDecisionDomainEvent(inboundEvent, result) {
+  const idempotencyRoot = inboundEvent.idempotencyKey ?? inboundEvent.eventId;
   return deriveDomainEvent(inboundEvent, {
     eventType: 'decision.completed',
+    idempotencyKey: `${idempotencyRoot}:decision.completed`,
     actor: { type: 'ai', id: 'supervisor' },
     payload: {
       action: result.action,
@@ -78,6 +80,7 @@ export function createHttpServer({
   orchestratorForTenant,
   auditStore,
   claimStore = null,
+  domainEventStore = null,
   readiness = null,
   linkedDeviceIngressToken = null,
   managementToken = null,
@@ -100,14 +103,16 @@ export function createHttpServer({
     const claimKey = `${tenant.id}:${message.id}`;
     if (!(await claims.claim(claimKey))) return { processed: 0, duplicates: 1, failures: [] };
     const normalizedMessage = { ...message, tenantId: tenant.id };
-    const inboundDomainEvent = createInboundDomainEvent(normalizedMessage, tenant, connectorId);
+    const attemptedInboundEvent = createInboundDomainEvent(normalizedMessage, tenant, connectorId);
     try {
+      const inboundDomainEvent = await domainEventStore?.append(attemptedInboundEvent) ?? attemptedInboundEvent;
       conversationStore?.recordInbound(normalizedMessage, inboundDomainEvent);
       sseBroadcaster?.broadcastDomainEvent?.(inboundDomainEvent);
 
       if (conversationStore?.isHumanControlled(tenant.id, normalizedMessage.customerId)) {
         const result = { action: 'human', reason: 'human_takeover', model: null, permission: { action: 'human', reason: 'human_takeover' } };
-        const decisionDomainEvent = createDecisionDomainEvent(inboundDomainEvent, result);
+        const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
+        const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
         auditStore.append({
           id: crypto.randomUUID(),
           tenantId: tenant.id,
@@ -125,7 +130,8 @@ export function createHttpServer({
       }
 
       const result = await orchestratorForTenant(tenant).handle(normalizedMessage, tenant);
-      const decisionDomainEvent = createDecisionDomainEvent(inboundDomainEvent, result);
+      const attemptedDecisionEvent = createDecisionDomainEvent(inboundDomainEvent, result);
+      const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
       conversationStore?.recordDecision(normalizedMessage, result, decisionDomainEvent);
       sseBroadcaster?.broadcastDomainEvent?.(decisionDomainEvent);
       return { processed: 1, duplicates: 0, failures: [] };
