@@ -1,0 +1,21 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      WAS_DOMAIN: ${WAS_DOMAIN:-whatsapp.example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      supervisor:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:

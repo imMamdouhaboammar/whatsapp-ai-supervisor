@@ -22,11 +22,13 @@ test('routes fast traffic to configured cheap model', async () => {
 
   const result = await gateway.decide({ text: 'working hours?' }, {
     route: 'fast',
-    routes: { fast: [{ provider: 'openai', model: 'gpt-5.6-luna' }] }
+    routes: { fast: [{ provider: 'openai', model: 'gpt-5.6-luna' }] },
+    availableCapabilities: [{ intent: 'order_status', type: 'browser' }]
   });
 
   assert.equal(result.model, 'gpt-5.6-luna');
   assert.equal(openai.calls[0].model, 'gpt-5.6-luna');
+  assert.deepEqual(openai.calls[0].availableCapabilities, [{ intent: 'order_status', type: 'browser' }]);
 });
 
 test('falls back to next provider when primary provider fails', async () => {

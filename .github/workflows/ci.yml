@@ -2,36 +2,32 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
   test:
-    name: Run Tests & Verification
-    runs-on: ubuntu-latest
-
     strategy:
       matrix:
-        node-version: [22.x]
-
+        node: [22, 24]
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Syntax Check
-        run: node --check src/server.js
-
-      - name: Run Test Suite (Node.js)
-        run: node --test
-
-      - name: Run Test Suite (Bun)
-        run: bun test
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target supervisor -t whatsapp-ai-supervisor:test .
+      - run: docker build --target browser-worker -t whatsapp-ai-supervisor-browser:test .
+      - run: docker build --target whatsapp-web-worker -t whatsapp-ai-supervisor-whatsapp-web:test .
+      - run: docker compose config >/dev/null

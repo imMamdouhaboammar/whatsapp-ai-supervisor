@@ -1,0 +1,4 @@
+{$WAS_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy supervisor:3000
+}

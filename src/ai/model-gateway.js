@@ -21,7 +21,8 @@ export class ModelGateway {
         const result = await provider.decide({
           model: candidate.model,
           message,
-          businessContext: routingConfig.businessContext ?? null
+          businessContext: routingConfig.businessContext ?? null,
+          availableCapabilities: routingConfig.availableCapabilities ?? []
         });
         return {
           ...result,

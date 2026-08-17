@@ -41,7 +41,7 @@ export class OpenAIProvider extends ModelProvider {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
-  async decide({ model, message, businessContext = null }) {
+  async decide({ model, message, businessContext = null, availableCapabilities = [] }) {
     const response = await this.fetchImpl(`${this.baseUrl}/responses`, {
       method: 'POST',
       headers: {
@@ -55,13 +55,15 @@ export class OpenAIProvider extends ModelProvider {
           'You classify an inbound business WhatsApp message and draft a concise customer-facing reply.',
           'Return the most specific intent you can infer.',
           'requestedAction is only a recommendation. A separate deterministic policy engine controls authority.',
+          'availableCapabilities contains non-sensitive hints about intents where deterministic policy may permit an action. Request act only when the customer intent clearly matches one of those entries.',
           'Use human when the message is ambiguous, sensitive, legal, financial, or needs information you do not have.',
           'Never invent business facts.'
         ].join(' '),
         input: JSON.stringify({
           customerMessage: message.text ?? '',
           conversationContext: message.context ?? [],
-          businessContext
+          businessContext,
+          availableCapabilities
         }),
         text: {
           format: {
