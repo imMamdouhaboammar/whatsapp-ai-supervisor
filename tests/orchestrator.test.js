@@ -140,3 +140,23 @@ test('shadow mode never executes action gateway', async () => {
   assert.equal(result.wouldAction, 'act');
   assert.equal(calls, 0);
 });
+
+test('simulation mode evaluates policy but cannot execute external side effects', async () => {
+  let actionCalls = 0;
+  const actionGateway = { async execute() { actionCalls += 1; return { ok: true }; } };
+  const { orchestrator, tenant, sent, audit } = setup({
+    modelDecision: { intent: 'order_status', confidence: 0.96, reply: 'Your order shipped', requestedAction: 'act' },
+    rules: [{ id: 'order-status', intent: 'order_status', action: 'act', capability: { type: 'browser', task: 'Check', allowedDomains: ['example.com'] } }],
+    actionGateway
+  });
+
+  const result = await orchestrator.handle(inbound, tenant, { executionMode: 'simulation' });
+
+  assert.equal(result.action, 'simulation');
+  assert.equal(result.wouldAction, 'act');
+  assert.equal(sent.length, 0);
+  assert.equal(actionCalls, 0);
+  const event = audit.list('tenant-1')[0];
+  assert.equal(event.result.action, 'simulation');
+  assert.equal(event.result.wouldAction, 'act');
+});
