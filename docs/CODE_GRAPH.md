@@ -313,7 +313,7 @@ None.
 | `src/ai/moderator-engine.js` | ai | 223 | 0 | 1 | `AutonomousModeratorEngine` | `moderator-engine.test.js` |
 | `src/ai/openai-provider.js` | ai | 89 | 1 | 1 | `OpenAIProvider` | `openai-provider.test.js` |
 | `src/ai/thinking-parser.js` | ai | 63 | 0 | 2 | `extractThinkingAndCleanText`, `parseDecisionJson`, `validateDecision` | `thinking-parser.test.js` |
-| `src/app.js` | http | 226 | 3 | 1 | `createHttpServer` | `app.test.js` |
+| `src/app.js` | http | 232 | 3 | 1 | `createHttpServer` | `app.test.js` |
 | `src/browser/agent-browser-runtime.js` | action | 87 | 1 | 1 | `AgentBrowserRuntime` | `browser-runtime.test.js` |
 | `src/browser/browser-runtime.js` | action | 35 | 0 | 3 | `validateBrowserTask`, `BrowserRuntime` | — |
 | `src/browser/remote-browser-runtime.js` | action | 61 | 1 | 1 | `RemoteBrowserRuntime` | `browser-runtime.test.js` |

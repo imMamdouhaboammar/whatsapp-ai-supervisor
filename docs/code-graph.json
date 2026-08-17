@@ -176,7 +176,7 @@
     {
       "id": "src/app.js",
       "group": "http",
-      "lines": 226,
+      "lines": 232,
       "exports": [
         {
           "kind": "function",
