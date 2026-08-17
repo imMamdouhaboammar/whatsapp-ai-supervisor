@@ -33,6 +33,10 @@ export class InMemoryTenantStore {
     return tenant;
   }
 
+  list() {
+    return [...this.byId.values()];
+  }
+
   findById(id) {
     return this.byId.get(id) ?? null;
   }

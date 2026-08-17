@@ -70,7 +70,11 @@ export class SupervisorOrchestrator {
       at: this.now(),
       model,
       permission,
-      result: { action: result.action, wouldAction: result.wouldAction ?? null }
+      result: {
+        action: result.action,
+        wouldAction: result.wouldAction ?? null,
+        reason: result.reason ?? null
+      }
     });
 
     return result;

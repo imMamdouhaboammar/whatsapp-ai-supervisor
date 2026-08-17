@@ -13,7 +13,11 @@
     "browser-worker": "node --env-file-if-exists=.env src/cli.js browser-worker",
     "linked-device:install": "npm --prefix workers/whatsapp-web install",
     "linked-device": "node --env-file-if-exists=.env workers/whatsapp-web/src/index.js",
-    "linked-device:check": "npm --prefix workers/whatsapp-web run check"
+    "linked-device:check": "npm --prefix workers/whatsapp-web run check",
+    "ui:install": "npm --prefix ui install --no-audit --no-fund",
+    "ui:dev": "npm --prefix ui run dev",
+    "ui:build": "npm --prefix ui run build",
+    "ui:check": "npm --prefix ui run check"
   },
   "engines": {
     "node": ">=22"
