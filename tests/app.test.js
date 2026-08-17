@@ -186,3 +186,18 @@ test('legacy v1 control endpoints require management bearer auth when configured
     assert.equal(allowedAudit.status, 200);
   });
 });
+
+test('unexpected internal errors are not returned to clients', async () => {
+  const d = deps();
+  d.orchestratorForTenant = () => ({ async handle() { throw new Error('private-file:/srv/secrets/customer-data'); } });
+  await withServer(d, async (base) => {
+    const response = await fetch(`${base}/v1/simulate`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'demo', text: 'trigger failure' })
+    });
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.deepEqual(body, { error: 'internal_error' });
+    assert.equal(JSON.stringify(body).includes('private-file'), false);
+  });
+});
