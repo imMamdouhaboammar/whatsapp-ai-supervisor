@@ -28,7 +28,7 @@ export class AutonomousModeratorEngine {
     const tenantId = tenant.id;
     const threads = this.conversationStore.list(tenantId);
     const orchestrator = this.orchestratorForTenant(tenant);
-    const sender = this.channelSenderForTenant(tenant);
+    const executionMode = dryRun ? 'simulation' : 'live';
 
     const report = {
       tenantId,
@@ -84,7 +84,7 @@ export class AutonomousModeratorEngine {
             }))
           };
 
-          const result = await orchestrator.handle(inboundMessage, tenant, { executionMode: dryRun ? 'simulation' : 'live' });
+          const result = await orchestrator.handle(inboundMessage, tenant, { executionMode });
 
           // If not dry run and action is reply, ensure it's recorded and sent
           if (!dryRun && result.action === 'reply' && result.model?.reply?.trim()) {
@@ -128,7 +128,7 @@ export class AutonomousModeratorEngine {
             customerId: thread.customerId,
             customerName: thread.customerName,
             channel: 'whatsapp',
-            text: `[SYSTEM_MODERATOR_PROACTIVE_EVALUATION]: The customer previously talked to us. Last message was: "${lastAssistantText}". Evaluate if a proactive check-in, gentle follow-up, or helpful assistance is beneficial. If so, draft a natural, warm follow-up in customer's language. If no follow-up is needed, set requestedAction to "ignore".`,
+            text: `[SYSTEM_MODERATOR_PROACTIVE_EVALUATION]: The customer previously talked to us. Last message was: \"${lastAssistantText}\". Evaluate if a proactive check-in, gentle follow-up, or helpful assistance is beneficial. If so, draft a natural, warm follow-up in customer's language. If no follow-up is needed, set requestedAction to \"ignore\".`,
             context: messages.slice(-6).map((m) => ({
               direction: m.direction === 'inbound' ? 'user' : 'assistant',
               text: m.text,
@@ -136,56 +136,56 @@ export class AutonomousModeratorEngine {
             }))
           };
 
-          const decision = await orchestrator.modelGateway.decide(subagentPrompt, {
-            route: tenant.ai?.route ?? 'standard',
-            routes: tenant.ai?.routes ?? {},
-            businessContext: tenant.businessContext ?? null
-          });
+          const result = await orchestrator.handle(subagentPrompt, tenant, { executionMode });
 
-          if (decision.requestedAction === 'reply' && decision.reply?.trim()) {
-            if (!dryRun) {
-              await sender.sendText({
-                to: thread.customerId,
-                text: decision.reply
-              });
-              this.conversationStore.appendEvent({
-                id: crypto.randomUUID(),
-                tenantId,
-                customerId: String(thread.customerId),
-                customerName: thread.customerName,
-                type: 'message',
-                direction: 'assistant',
-                text: decision.reply,
-                at: this.now(),
-                action: 'proactive_followup',
-                intent: decision.intent ?? 'proactive_reengagement',
-                confidence: decision.confidence ?? 0.95,
-                thinking: decision.thinking ?? null,
-                proactiveOffer: decision.proactiveOffer ?? null,
-                modelName: decision.model ?? null,
-                provider: decision.provider ?? null
-              });
-              report.followupsSent += 1;
-            }
-
+          if (result.action === 'reply' && result.model?.reply?.trim()) {
+            this.conversationStore.recordDecision(subagentPrompt, result);
+            report.followupsSent += 1;
             report.results.push({
               customerId: thread.customerId,
               customerName: thread.customerName,
               type: 'proactive_followup',
-              action: 'proactive_sent',
-              reply: decision.reply,
-              thinking: decision.thinking ?? null,
-              proactiveOffer: decision.proactiveOffer ?? null,
-              provider: decision.provider ?? null,
-              model: decision.model ?? null
+              action: 'reply',
+              reply: result.model.reply,
+              proactiveOffer: result.model?.proactiveOffer ?? null,
+              provider: result.model?.provider ?? null,
+              model: result.model?.model ?? null
+            });
+          } else if (result.action === 'human') {
+            report.humanHandoffs += 1;
+            report.results.push({
+              customerId: thread.customerId,
+              customerName: thread.customerName,
+              type: 'proactive_evaluation',
+              action: 'human',
+              reason: result.reason ?? null,
+              reply: result.model?.reply ?? null,
+              provider: result.model?.provider ?? null,
+              model: result.model?.model ?? null
+            });
+          } else if (result.action === 'simulation') {
+            report.results.push({
+              customerId: thread.customerId,
+              customerName: thread.customerName,
+              type: 'proactive_evaluation',
+              action: 'simulation',
+              wouldAction: result.wouldAction ?? null,
+              reply: result.model?.reply ?? null,
+              provider: result.model?.provider ?? null,
+              model: result.model?.model ?? null
             });
           } else {
             report.results.push({
               customerId: thread.customerId,
               customerName: thread.customerName,
               type: 'proactive_evaluation',
-              action: 'no_followup_needed',
-              thinking: decision.thinking ?? null
+              action: result.action === 'ignore' ? 'no_followup_needed' : result.action,
+              reason: result.reason ?? null,
+              reply: result.model?.reply ?? null,
+              thinking: result.model?.thinking ?? null,
+              proactiveOffer: result.model?.proactiveOffer ?? null,
+              provider: result.model?.provider ?? null,
+              model: result.model?.model ?? null
             });
           }
         } catch (error) {
