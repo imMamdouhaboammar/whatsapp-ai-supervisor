@@ -25,9 +25,12 @@ COPY package.json ./
 COPY src ./src
 COPY config ./config
 
-RUN npm install -g "agent-browser@${AGENT_BROWSER_VERSION}" \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends sudo \
+    && npm install -g --allow-scripts=agent-browser "agent-browser@${AGENT_BROWSER_VERSION}" \
     && agent-browser install --with-deps \
-    && rm -rf /root/.npm
+    && apt-get purge -y sudo \
+    && rm -rf /var/lib/apt/lists/* /root/.npm
 
 ENV BROWSER_WORKER_HOST=0.0.0.0 \
     BROWSER_WORKER_PORT=7331 \
