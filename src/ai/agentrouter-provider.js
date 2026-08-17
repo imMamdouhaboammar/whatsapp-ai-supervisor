@@ -1,18 +1,16 @@
 import { ModelProvider } from './model-provider.js';
-import { extractThinkingAndCleanText, parseDecisionJson, validateDecision } from './thinking-parser.js';
+import { parseDecisionJson, validateDecision } from './thinking-parser.js';
+
+function httpError(status) {
+  return Object.assign(new Error('AgentRouter request failed'), { status: Number(status) });
+}
 
 export class AgentRouterProvider extends ModelProvider {
-  constructor({
-    apiKeys = [],
-    apiKey = null,
-    fetchImpl = fetch,
-    baseUrl = 'https://agentrouter.org/v1'
-  }) {
+  constructor({ apiKeys = [], apiKey = null, fetchImpl = fetch, baseUrl = 'https://agentrouter.org/v1' }) {
     super();
     const rawKeys = Array.isArray(apiKeys) && apiKeys.length > 0
       ? apiKeys
       : (apiKey ? String(apiKey).split(',').map((k) => k.trim()).filter(Boolean) : []);
-
     if (rawKeys.length === 0) throw new Error('AGENTROUTER_API_KEY is required');
     this.apiKeys = rawKeys;
     this.keyIndex = 0;
@@ -25,52 +23,48 @@ export class AgentRouterProvider extends ModelProvider {
   }
 
   rotateKey() {
-    if (this.apiKeys.length > 1) {
-      this.keyIndex = (this.keyIndex + 1) % this.apiKeys.length;
-    }
+    if (this.apiKeys.length > 1) this.keyIndex = (this.keyIndex + 1) % this.apiKeys.length;
   }
 
-  async decide({ model = 'gpt-5.6-sol', message, businessContext = null, availableCapabilities = [] }) {
+  async decide({ model = 'gpt-5.6-sol', message, businessContext = null, availableCapabilities = [], signal = undefined }) {
     const systemPrompt = [
       'You are a high-capability proactive AI business agent operating on WhatsApp.',
       'Analyze the conversation context, infer customer intent, formulate strategic thinking, and compose a natural, professional response.',
       'Return a JSON object with strictly these keys:',
-      '- "intent": (string) specific detected intent (e.g., working_hours, pricing, order_status, consultation, faq, complaint)',
-      '- "confidence": (number between 0 and 1) how certain you are of the intent and reply accuracy',
-      '- "reply": (string) the natural, courteous, proactive Arabic or English customer-facing message',
+      '- "intent": (string) specific detected intent',
+      '- "confidence": (number between 0 and 1)',
+      '- "reply": (string) customer-facing message',
       '- "requestedAction": ("reply" | "draft" | "act" | "human" | "ignore")',
-      '- "thinking": (string, optional) your step-by-step reasoning and strategic assessment',
-      '- "proactiveOffer": (string, optional) proactive next step or suggested action to guide the customer',
+      '- "thinking": (string, optional)',
+      '- "proactiveOffer": (string, optional)',
       'Rules:',
-      '1. Be proactive, helpful, and courteous. Offer relevant next steps naturally.',
+      '1. Be proactive, helpful, and courteous.',
       '2. If the query is ambiguous, high-risk, legal, financial, or requires human intervention, set requestedAction to "human".',
       '3. Never invent unverified business facts. Adhere strictly to the business context.'
     ].join('\n');
-
-    const userPayload = JSON.stringify({
-      customerMessage: message.text ?? '',
-      conversationContext: message.context ?? [],
-      businessContext,
-      availableCapabilities
-    });
 
     const bodyPayload = {
       model: model || 'gpt-5.6-sol',
       temperature: 0.2,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPayload }
+        { role: 'user', content: JSON.stringify({
+          customerMessage: message.text ?? '',
+          conversationContext: message.context ?? [],
+          businessContext,
+          availableCapabilities
+        }) }
       ]
     };
 
     let lastError = null;
-    const maxAttempts = this.apiKeys.length;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; attempt < this.apiKeys.length; attempt += 1) {
+      if (signal?.aborted) throw signal.reason ?? Object.assign(new Error('Request aborted'), { name: 'AbortError' });
       const currentKey = this.getActiveKey();
       try {
         const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
           method: 'POST',
+          signal,
           headers: {
             authorization: `Bearer ${currentKey}`,
             'content-type': 'application/json',
@@ -78,34 +72,29 @@ export class AgentRouterProvider extends ModelProvider {
           },
           body: JSON.stringify(bodyPayload)
         });
-
-        if (!response.ok) {
-          const detail = await response.text();
-          throw new Error(`AgentRouter request failed (${response.status}): ${detail.slice(0, 500)}`);
-        }
+        if (!response.ok) throw httpError(response.status);
 
         const data = await response.json();
         const choice = data.choices?.[0]?.message;
         const rawContent = choice?.content ?? '';
         const reasoningContent = choice?.reasoning_content ?? null;
-
-        const parsed = parseDecisionJson(rawContent);
-        if (reasoningContent && !parsed.thinking) {
-          parsed.thinking = reasoningContent;
+        let parsed;
+        try {
+          parsed = parseDecisionJson(rawContent);
+          if (reasoningContent && !parsed.thinking) parsed.thinking = reasoningContent;
+          parsed = validateDecision(parsed);
+        } catch (error) {
+          throw Object.assign(error instanceof Error ? error : new Error('Invalid AgentRouter response'), { code: 'invalid_response' });
         }
-
-        const validated = validateDecision(parsed);
-        return {
-          ...validated,
-          model,
-          provider: 'agentrouter'
-        };
-      } catch (err) {
-        lastError = err;
+        return { ...parsed, model, provider: 'agentrouter' };
+      } catch (error) {
+        if (signal?.aborted || error?.name === 'AbortError') throw error;
+        lastError = error;
+        const retryWithAnotherKey = (error?.status === 401 || error?.status === 403 || error?.status === 429) && attempt + 1 < this.apiKeys.length;
+        if (!retryWithAnotherKey) throw error;
         this.rotateKey();
       }
     }
-
-    throw lastError ?? new Error('AgentRouter all key attempts failed');
+    throw lastError ?? new Error('AgentRouter request failed');
   }
 }
