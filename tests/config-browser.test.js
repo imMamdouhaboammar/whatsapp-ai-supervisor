@@ -128,3 +128,15 @@ test('loadConfig still requires Meta secrets when any Cloud API tenant exists', 
     assert.throws(() => loadConfig(), /META_WEBHOOK_VERIFY_TOKEN/);
   });
 });
+
+test('loadConfig refuses an external bind without a management token', async () => {
+  await withEnv(await baseEnv({ HOST: '0.0.0.0', MANAGEMENT_TOKEN: undefined }), async () => {
+    assert.throws(() => loadConfig(), /MANAGEMENT_TOKEN.*external/i);
+  });
+
+  await withEnv(await baseEnv({ HOST: '0.0.0.0', MANAGEMENT_TOKEN: 'operator-secret' }), async () => {
+    const config = loadConfig();
+    assert.equal(config.host, '0.0.0.0');
+    assert.equal(config.management.token, 'operator-secret');
+  });
+});
