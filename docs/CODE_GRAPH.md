@@ -341,7 +341,7 @@ None.
 | `src/runtime/doctor.js` | runtime | 160 | 0 | 1 | `runDoctor` | `runtime-cli.test.js` |
 | `src/runtime/init-local.js` | runtime | 42 | 0 | 1 | `initializeLocalWorkspace` | `runtime-cli.test.js` |
 | `src/runtime/readiness.js` | runtime | 64 | 0 | 1 | `probeDataDirectory`, `collectReadiness` | `readiness.test.js` |
-| `src/server.js` | entry | 163 | 19 | 1 | — | — |
+| `src/server.js` | entry | 166 | 19 | 1 | — | — |
 | `ui/src/api/client.ts` | ui | 89 | 1 | 11 | `managementToken`, `setManagementToken`, `api` | — |
 | `ui/src/api/types.ts` | ui | 146 | 0 | 10 | `TransportMode`, `ConversationControl`, `WhatsAppNumber`, `Tenant`, `TenantCreatePayload`, `TenantUpdatePayload`, `WhatsAppSession`, `AuditEvent`, `ConversationMessage`, `Conversation`, `Overview`, `ActionEvent`, `RuntimeInfo` | — |
 | `ui/src/app/App.tsx` | ui | 88 | 12 | 1 | `App` | — |
