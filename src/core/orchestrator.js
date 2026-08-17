@@ -1,9 +1,19 @@
 import { evaluatePermission } from '../domain/permission-engine.js';
 
+const EXECUTION_MODES = new Set(['live', 'shadow', 'simulation']);
+
 function availableCapabilities(policy) {
   return (policy?.rules ?? [])
     .filter((rule) => rule.action === 'act' && rule.capability?.type)
     .map((rule) => ({ intent: rule.intent, type: rule.capability.type }));
+}
+
+function resolveExecutionMode(tenant, requestedMode = null) {
+  const requested = requestedMode ?? 'live';
+  if (!EXECUTION_MODES.has(requested)) throw new Error(`invalid_execution_mode: ${requested}`);
+  if (requested === 'simulation') return 'simulation';
+  if (tenant.shadowMode) return 'shadow';
+  return requested;
 }
 
 export class SupervisorOrchestrator {
@@ -41,7 +51,8 @@ export class SupervisorOrchestrator {
     }
   }
 
-  async handle(message, tenant) {
+  async handle(message, tenant, { executionMode = null } = {}) {
+    const resolvedExecutionMode = resolveExecutionMode(tenant, executionMode);
     const context = message.context && Array.isArray(message.context) && message.context.length > 0
       ? message.context
       : this.buildConversationContext(tenant.id, message.customerId);
@@ -61,7 +72,9 @@ export class SupervisorOrchestrator {
     const permission = evaluatePermission(tenant.policy ?? {}, model);
     let result;
 
-    if (tenant.shadowMode) {
+    if (resolvedExecutionMode === 'simulation') {
+      result = { action: 'simulation', wouldAction: permission.action, model, permission };
+    } else if (resolvedExecutionMode === 'shadow') {
       result = { action: 'shadow', wouldAction: permission.action, model, permission };
     } else if (permission.action === 'reply') {
       if (!model.reply?.trim()) {
