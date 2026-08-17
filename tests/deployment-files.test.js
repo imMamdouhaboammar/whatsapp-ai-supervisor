@@ -35,6 +35,9 @@ test('compose keeps browser worker private and persists supervisor data', async 
   assert.match(compose, /profiles: \["linked-device"\]/);
   assert.match(compose, /was-whatsapp-web-data:\/app\/data\/whatsapp-web/);
   assert.match(compose, /127\.0\.0\.1:\$\{WHATSAPP_WEB_WORKER_PORT:-7441\}:7441/);
+  assert.equal((compose.match(/required: false/g) ?? []).length, 3);
+  assert.match(compose, /WHATSAPP_LINKED_DEVICE_WORKER_TOKEN: \$\{WHATSAPP_LINKED_DEVICE_WORKER_TOKEN:-\}/);
+  assert.match(compose, /LINKED_DEVICE_INGRESS_TOKEN: \$\{LINKED_DEVICE_INGRESS_TOKEN:-\}/);
 });
 
 test('environment example documents local, remote, and Lightpanda browser settings', async () => {

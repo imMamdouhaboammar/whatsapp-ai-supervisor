@@ -6,7 +6,8 @@ services:
     image: whatsapp-ai-supervisor:local
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       HOST: 0.0.0.0
       PORT: 3000
@@ -36,7 +37,8 @@ services:
     image: whatsapp-ai-supervisor-browser:local
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       BROWSER_WORKER_HOST: 0.0.0.0
       BROWSER_WORKER_PORT: 7331
@@ -59,15 +61,16 @@ services:
     image: whatsapp-ai-supervisor-whatsapp-web:local
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       TENANTS_FILE: /app/config/tenants.json
       WHATSAPP_WEB_WORKER_HOST: 0.0.0.0
       WHATSAPP_WEB_WORKER_PORT: 7441
       WHATSAPP_WEB_DATA_DIR: /app/data/whatsapp-web
       SUPERVISOR_INTERNAL_URL: http://supervisor:3000
-      WHATSAPP_LINKED_DEVICE_WORKER_TOKEN: ${WHATSAPP_LINKED_DEVICE_WORKER_TOKEN}
-      LINKED_DEVICE_INGRESS_TOKEN: ${LINKED_DEVICE_INGRESS_TOKEN}
+      WHATSAPP_LINKED_DEVICE_WORKER_TOKEN: ${WHATSAPP_LINKED_DEVICE_WORKER_TOKEN:-}
+      LINKED_DEVICE_INGRESS_TOKEN: ${LINKED_DEVICE_INGRESS_TOKEN:-}
       WHATSAPP_WEB_SPOOL_FLUSH_MS: ${WHATSAPP_WEB_SPOOL_FLUSH_MS:-5000}
       WHATSAPP_WEB_MIN_SEND_INTERVAL_MS: ${WHATSAPP_WEB_MIN_SEND_INTERVAL_MS:-350}
       WHATSAPP_WEB_MAX_SEND_QUEUE: ${WHATSAPP_WEB_MAX_SEND_QUEUE:-100}
