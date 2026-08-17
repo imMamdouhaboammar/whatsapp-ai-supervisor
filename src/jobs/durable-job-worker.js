@@ -12,11 +12,20 @@ function sleepWithSignal(ms, signal) {
 }
 
 export class DurableJobWorker {
-  constructor({ queue, handlers = {}, pollMs = 500, sleep = sleepWithSignal } = {}) {
+  constructor({
+    queue,
+    handlers = {},
+    pollMs = 500,
+    infrastructureBackoffMs = 5_000,
+    onInfrastructureError = () => {},
+    sleep = sleepWithSignal
+  } = {}) {
     if (!queue?.claimNext) throw new Error('DurableJobWorker queue is required');
     this.queue = queue;
     this.handlers = handlers;
     this.pollMs = Math.max(25, Number(pollMs) || 500);
+    this.infrastructureBackoffMs = Math.max(this.pollMs, Number(infrastructureBackoffMs) || 5_000);
+    this.onInfrastructureError = onInfrastructureError;
     this.sleep = sleep;
   }
 
@@ -38,7 +47,14 @@ export class DurableJobWorker {
 
   async run({ signal } = {}) {
     while (!signal?.aborted) {
-      const result = await this.runOnce();
+      let result;
+      try {
+        result = await this.runOnce();
+      } catch {
+        this.onInfrastructureError('queue_unavailable');
+        if (!signal?.aborted) await this.sleep(this.infrastructureBackoffMs, signal);
+        continue;
+      }
       if (signal?.aborted) break;
       if (result.status === 'idle') await this.sleep(this.pollMs, signal);
     }
