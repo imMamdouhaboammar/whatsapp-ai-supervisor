@@ -143,7 +143,7 @@ const managementRouter = createManagementRouter({
 const server = createHttpServer({
   verifyToken: config.meta.verifyToken,
   appSecret: config.meta.appSecret,
-  linkedDeviceIngressToken: config.linkedDevice.ingressToken,
+  linkedDeviceIngressToken: config.linkedDevice.ingressToken, managementToken: config.management.token,
   tenantStore,
   orchestratorForTenant,
   auditStore,
