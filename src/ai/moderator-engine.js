@@ -84,7 +84,7 @@ export class AutonomousModeratorEngine {
             }))
           };
 
-          const result = await orchestrator.handle(inboundMessage, tenant);
+          const result = await orchestrator.handle(inboundMessage, tenant, { executionMode: dryRun ? 'simulation' : 'live' });
 
           // If not dry run and action is reply, ensure it's recorded and sent
           if (!dryRun && result.action === 'reply' && result.model?.reply?.trim()) {
@@ -98,7 +98,7 @@ export class AutonomousModeratorEngine {
             customerId: thread.customerId,
             customerName: thread.customerName,
             type: 'inbound_resolution',
-            action: result.action,
+            action: result.action, wouldAction: result.wouldAction ?? null,
             reply: result.model?.reply ?? null,
             thinking: result.model?.thinking ?? null,
             proactiveOffer: result.model?.proactiveOffer ?? null,
