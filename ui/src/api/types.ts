@@ -1,6 +1,18 @@
 export type TransportMode = 'cloud' | 'linked-device';
 export type ConversationControl = 'ai' | 'human';
+export type ConversationOwnershipState = 'AI_ACTIVE' | 'WAITING_APPROVAL' | 'HUMAN_REQUESTED' | 'HUMAN_ACTIVE' | 'AI_PAUSED';
 export type ConnectorState = 'disabled' | 'disconnected' | 'connecting' | 'qr_required' | 'ready' | 'degraded' | 'failed';
+
+export interface ConversationOwnership {
+  tenantId: string;
+  conversationId: string;
+  state: ConversationOwnershipState;
+  version: number;
+  changedAt: string;
+  changedBy: string;
+  reasonCode: string | null;
+  transitionId: string | null;
+}
 
 export interface WhatsAppNumber {
   id: string;
@@ -81,7 +93,7 @@ export interface ConversationMessage {
   tenantId: string;
   customerId: string;
   customerName?: string;
-  direction: 'inbound' | 'assistant' | 'human';
+  direction: 'inbound' | 'assistant' | 'human' | 'operator';
   type: 'message' | 'decision';
   text: string | null;
   at: string;
@@ -101,6 +113,7 @@ export interface Conversation {
   customerId: string;
   customerName: string;
   control: ConversationControl;
+  ownership?: ConversationOwnership;
   lastActivityAt: string;
   preview: string;
   messages: ConversationMessage[];
