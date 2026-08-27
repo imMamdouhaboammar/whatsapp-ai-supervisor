@@ -113,7 +113,7 @@ async function transitionManagementOwnership({
     expectedVersion: expectedVersionFrom(body, previous.version)
   });
 
-  conversationStore.setControl(tenantId, customerId, current.state === 'HUMAN_ACTIVE' ? 'human' : 'ai');
+  conversationStore.setControl(tenantId, customerId, current.state === 'AI_ACTIVE' ? 'ai' : 'human');
 
   if (current.version !== previous.version || current.state !== previous.state) {
     const attemptedEvent = createDomainEvent({
