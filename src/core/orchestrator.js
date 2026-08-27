@@ -1,17 +1,22 @@
 import { evaluatePermission } from '../domain/permission-engine.js';
+import { createOutboundAttribution } from '../domain/outbound-attribution.js';
+
 const EXECUTION_MODES = new Set(['live', 'shadow', 'simulation']);
+
 function availableCapabilities(policy) {
   const isV2 = Number(policy?.version) === 2;
   return (policy?.rules ?? [])
     .filter((rule) => rule.action === 'act' && rule.capability?.type && (!isV2 || rule.effect === 'allow'))
     .map((rule) => ({ intent: rule.intent, type: rule.capability.type }));
 }
+
 function resolveExecutionMode(tenant, requestedMode = null) {
   const requested = requestedMode ?? 'live';
   if (!EXECUTION_MODES.has(requested)) throw new Error(`invalid_execution_mode: ${requested}`);
   if (requested === 'simulation') return 'simulation';
   return tenant.shadowMode ? 'shadow' : requested;
 }
+
 export class SupervisorOrchestrator {
   constructor({
     modelGateway,
@@ -19,6 +24,7 @@ export class SupervisorOrchestrator {
     auditStore,
     actionGateway = null,
     conversationStore = null,
+    outboundAttributionStore = null,
     now = () => new Date().toISOString()
   }) {
     this.modelGateway = modelGateway;
@@ -26,8 +32,10 @@ export class SupervisorOrchestrator {
     this.auditStore = auditStore;
     this.actionGateway = actionGateway;
     this.conversationStore = conversationStore;
+    this.outboundAttributionStore = outboundAttributionStore;
     this.now = now;
   }
+
   buildConversationContext(tenantId, customerId) {
     if (!this.conversationStore || typeof this.conversationStore.readEvents !== 'function') return [];
     try {
@@ -42,6 +50,33 @@ export class SupervisorOrchestrator {
       }));
     } catch {
       return [];
+    }
+  }
+
+  async recordAgentAttribution({ tenant, message, outbound }) {
+    if (
+      outbound?.transport !== 'linked-device' ||
+      !outbound?.platformMessageId ||
+      !outbound?.sessionId ||
+      !this.outboundAttributionStore?.record
+    ) {
+      return null;
+    }
+
+    try {
+      const attribution = createOutboundAttribution({
+        tenantId: tenant.id,
+        sessionId: outbound.sessionId,
+        conversationId: `${message.channel}:${message.customerId}`,
+        customerId: message.customerId,
+        platformMessageId: outbound.platformMessageId,
+        origin: 'agent',
+        sourceMessageId: message.id
+      }, { now: this.now });
+      await this.outboundAttributionStore.record(attribution);
+      return { recorded: true };
+    } catch {
+      return { recorded: false, reason: 'attribution_failed' };
     }
   }
 
@@ -73,7 +108,8 @@ export class SupervisorOrchestrator {
           text: model.reply,
           replyToId: message.id
         });
-        result = { action: 'reply', outbound, model, permission };
+        const attribution = await this.recordAgentAttribution({ tenant, message, outbound });
+        result = { action: 'reply', outbound, model, permission, ...(attribution ? { attribution } : {}) };
       }
     } else if (permission.action === 'act') {
       if (!this.actionGateway) {
