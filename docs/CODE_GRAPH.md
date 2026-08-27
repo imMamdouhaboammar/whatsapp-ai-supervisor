@@ -341,7 +341,7 @@ tenant.shadowMode     ->  suppresses side effects, records wouldAction
 
 - `node:path` (16 import sites)
 - `react` (15 import sites)
-- `node:crypto` (12 import sites)
+- `node:crypto` (13 import sites)
 - `node:fs` (12 import sites)
 - `node:fs/promises` (7 import sites)
 - `node:http` (3 import sites)
@@ -371,7 +371,7 @@ None.
 | `src/ai/openai-provider.js` | ai | 97 | 1 | 1 | `OpenAIProvider` | `openai-provider.test.js`, `provider-transport-reliability.test.js` |
 | `src/ai/provider-error.js` | ai | 75 | 0 | 1 | `AiGatewayError`, `normalizeProviderError` | `model-gateway-reliability.test.js` |
 | `src/ai/thinking-parser.js` | ai | 63 | 0 | 2 | `extractThinkingAndCleanText`, `parseDecisionJson`, `validateDecision` | `thinking-parser.test.js` |
-| `src/app.js` | http | 378 | 5 | 1 | `createHttpServer` | `app-decision-events.test.js`, `app-domain-events.test.js`, `app-durable-domain-events.test.js`, `app-durable-queue.test.js`, `app-linked-device-human-takeover.test.js`, `app-realtime-domain-events.test.js`, `app.test.js` |
+| `src/app.js` | http | 385 | 5 | 1 | `createHttpServer` | `app-decision-events.test.js`, `app-domain-events.test.js`, `app-durable-domain-events.test.js`, `app-durable-queue.test.js`, `app-linked-device-human-takeover.test.js`, `app-linked-device-send-race.test.js`, `app-realtime-domain-events.test.js`, `app.test.js` |
 | `src/browser/agent-browser-runtime.js` | action | 87 | 1 | 1 | `AgentBrowserRuntime` | `browser-runtime.test.js` |
 | `src/browser/browser-runtime.js` | action | 35 | 0 | 3 | `validateBrowserTask`, `BrowserRuntime` | — |
 | `src/browser/remote-browser-runtime.js` | action | 61 | 1 | 1 | `RemoteBrowserRuntime` | `browser-runtime.test.js` |
@@ -379,7 +379,7 @@ None.
 | `src/browser/worker-app.js` | http | 96 | 1 | 1 | `createBrowserWorkerServer` | `browser-worker.test.js` |
 | `src/browser/worker.js` | entry | 29 | 2 | 1 | — | — |
 | `src/channels/whatsapp-cloud.js` | channel | 87 | 0 | 2 | `normalizeWhatsAppWebhook`, `validateMetaSignature`, `verifyWebhookChallenge`, `WhatsAppCloudSender` | `whatsapp-cloud.test.js`, `whatsapp-sender-factory.test.js` |
-| `src/channels/whatsapp-linked-device.js` | channel | 128 | 0 | 6 | `whatsappTransportMode`, `normalizeLinkedDeviceInbound`, `normalizeLinkedDeviceOutboundObservation`, `WhatsAppLinkedDeviceSender` | `linked-device-channel.test.js`, `linked-device-outbound-normalization.test.js`, `linked-device-receipt.test.js`, `whatsapp-sender-factory.test.js` |
+| `src/channels/whatsapp-linked-device.js` | channel | 149 | 0 | 6 | `whatsappTransportMode`, `normalizeLinkedDeviceInbound`, `normalizeLinkedDeviceOutboundObservation`, `WhatsAppLinkedDeviceSender` | `linked-device-channel.test.js`, `linked-device-outbound-normalization.test.js`, `linked-device-receipt.test.js`, `linked-device-send-operation.test.js`, `whatsapp-sender-factory.test.js` |
 | `src/channels/whatsapp-sender-factory.js` | channel | 26 | 2 | 1 | `createWhatsAppSender` | `whatsapp-sender-factory.test.js` |
 | `src/cli.js` | entry | 79 | 4 | 0 | `main` | — |
 | `src/config.js` | runtime | 147 | 1 | 1 | `loadConfig`, `resolveTenantSecret` | `config-browser.test.js`, `postgres-runtime-wiring.test.js` |
@@ -400,11 +400,11 @@ None.
 | `src/domain/types.js` | decision | 9 | 0 | 1 | `AUTONOMY_ACTIONS`, `assertAutonomyAction` | — |
 | `src/jobs/durable-inbound-runtime.js` | other | 34 | 2 | 1 | `createInboundProcessingRuntime` | `durable-inbound-runtime.test.js`, `durable-ownership-runtime.test.js` |
 | `src/jobs/durable-job-worker.js` | other | 63 | 0 | 1 | `DurableJobWorker` | `durable-job-worker.test.js` |
-| `src/jobs/inbound-decision-handler.js` | other | 112 | 1 | 2 | `createInboundDecisionHandler`, `createProcessInboundJobHandler` | `inbound-decision-handler.test.js`, `inbound-ownership-gate.test.js` |
+| `src/jobs/inbound-decision-handler.js` | other | 114 | 1 | 2 | `createInboundDecisionHandler`, `createProcessInboundJobHandler` | `inbound-decision-handler.test.js`, `inbound-ownership-gate.test.js` |
 | `src/jobs/postgres-job-queue.js` | other | 159 | 0 | 1 | `PostgresJobQueue` | `postgres-durable-runtime.test.js`, `postgres-integration.mjs` |
 | `src/management/dashboard.js` | http | 90 | 1 | 1 | `sanitizeTenant`, `recentAuditEvents`, `buildOverview`, `buildActions` | `management-dashboard.test.js` |
 | `src/management/linked-device-status.js` | http | 155 | 2 | 1 | `createLinkedDeviceStatusProvider` | `connector-status-provider.test.js` |
-| `src/management/router.js` | http | 386 | 3 | 1 | `createManagementRouter` | `management-ownership.test.js`, `management-router.test.js` |
+| `src/management/router.js` | http | 386 | 3 | 1 | `createManagementRouter` | `management-ownership-projection.test.js`, `management-ownership.test.js`, `management-router.test.js` |
 | `src/management/static-ui.js` | http | 59 | 0 | 1 | `serveStaticUi` | `static-ui.test.js` |
 | `src/realtime/sse-broadcaster.js` | runtime | 77 | 1 | 1 | `SseBroadcaster` | `realtime-domain-events.test.js`, `sse-broadcaster.test.js` |
 | `src/runtime/doctor.js` | runtime | 160 | 0 | 1 | `runDoctor` | `runtime-cli.test.js` |
@@ -443,6 +443,6 @@ None.
 | `ui/src/vite-env.d.ts` | ui | 2 | 0 | 0 | — | — |
 | `workers/whatsapp-web/src/config.js` | worker | 58 | 0 | 1 | `loadWorkerConfig` | `whatsapp-web-worker-config.test.js` |
 | `workers/whatsapp-web/src/index.js` | entry | 70 | 4 | 0 | — | — |
-| `workers/whatsapp-web/src/server.js` | http | 89 | 0 | 1 | `createWhatsAppWebWorkerServer` | `whatsapp-web-worker-server.test.js` |
-| `workers/whatsapp-web/src/session-manager.js` | worker | 297 | 0 | 1 | `WhatsAppWebSessionManager` | `whatsapp-web-human-outbound.test.js`, `whatsapp-web-session-manager.test.js` |
+| `workers/whatsapp-web/src/server.js` | http | 102 | 0 | 1 | `createWhatsAppWebWorkerServer` | `whatsapp-web-worker-server.test.js` |
+| `workers/whatsapp-web/src/session-manager.js` | worker | 388 | 0 | 1 | `WhatsAppWebSessionManager` | `whatsapp-web-human-outbound.test.js`, `whatsapp-web-same-text-human-race.test.js`, `whatsapp-web-send-echo-race.test.js`, `whatsapp-web-session-manager.test.js` |
 | `workers/whatsapp-web/src/spool.js` | worker | 91 | 0 | 1 | `DiskInboundSpool` | `linked-device-spool.test.js` |

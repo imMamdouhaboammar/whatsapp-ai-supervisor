@@ -205,7 +205,7 @@
     {
       "id": "src/app.js",
       "group": "http",
-      "lines": 378,
+      "lines": 385,
       "exports": [
         {
           "kind": "function",
@@ -232,6 +232,7 @@
         "tests/app-durable-domain-events.test.js",
         "tests/app-durable-queue.test.js",
         "tests/app-linked-device-human-takeover.test.js",
+        "tests/app-linked-device-send-race.test.js",
         "tests/app-realtime-domain-events.test.js",
         "tests/app.test.js"
       ]
@@ -405,7 +406,7 @@
     {
       "id": "src/channels/whatsapp-linked-device.js",
       "group": "channel",
-      "lines": 128,
+      "lines": 149,
       "exports": [
         {
           "kind": "function",
@@ -433,11 +434,14 @@
         "src/management/dashboard.js",
         "src/management/linked-device-status.js"
       ],
-      "external": [],
+      "external": [
+        "node:crypto"
+      ],
       "tests": [
         "tests/linked-device-channel.test.js",
         "tests/linked-device-outbound-normalization.test.js",
         "tests/linked-device-receipt.test.js",
+        "tests/linked-device-send-operation.test.js",
         "tests/whatsapp-sender-factory.test.js"
       ]
     },
@@ -965,7 +969,7 @@
     {
       "id": "src/jobs/inbound-decision-handler.js",
       "group": "other",
-      "lines": 112,
+      "lines": 114,
       "exports": [
         {
           "kind": "function",
@@ -1086,6 +1090,7 @@
         "node:crypto"
       ],
       "tests": [
+        "tests/management-ownership-projection.test.js",
         "tests/management-ownership.test.js",
         "tests/management-router.test.js"
       ]
@@ -1477,7 +1482,7 @@
     {
       "id": "workers/whatsapp-web/src/server.js",
       "group": "http",
-      "lines": 89,
+      "lines": 102,
       "exports": [
         {
           "kind": "function",
@@ -1499,7 +1504,7 @@
     {
       "id": "workers/whatsapp-web/src/session-manager.js",
       "group": "worker",
-      "lines": 297,
+      "lines": 388,
       "exports": [
         {
           "kind": "class",
@@ -1513,6 +1518,8 @@
       "external": [],
       "tests": [
         "tests/whatsapp-web-human-outbound.test.js",
+        "tests/whatsapp-web-same-text-human-race.test.js",
+        "tests/whatsapp-web-send-echo-race.test.js",
         "tests/whatsapp-web-session-manager.test.js"
       ]
     },
