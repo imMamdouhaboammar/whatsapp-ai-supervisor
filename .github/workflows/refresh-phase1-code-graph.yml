@@ -32,5 +32,5 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs: refresh phase one code graph"
+          git commit -m "docs: refresh phase one code graph after runtime wiring"
           git push origin HEAD:feat/messaging-agent-phase1
