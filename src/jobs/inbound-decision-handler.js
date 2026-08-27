@@ -2,20 +2,22 @@ import { assertDomainEvent, deriveDomainEvent } from '../domain/domain-event.js'
 
 function createDecisionDomainEvent(inboundEvent, result) {
   const idempotencyRoot = inboundEvent.idempotencyKey ?? inboundEvent.eventId;
+  const payload = {
+    action: result.action,
+    wouldAction: result.wouldAction ?? null,
+    reason: result.reason ?? null,
+    intent: result.model?.intent ?? null,
+    confidence: result.model?.confidence ?? null,
+    provider: result.model?.provider ?? null,
+    model: result.model?.model ?? null
+  };
+  if (result.ownershipState) payload.ownershipState = result.ownershipState;
+
   return deriveDomainEvent(inboundEvent, {
     eventType: 'decision.completed',
     idempotencyKey: `${idempotencyRoot}:decision.completed`,
     actor: { type: 'ai', id: 'supervisor' },
-    payload: {
-      action: result.action,
-      wouldAction: result.wouldAction ?? null,
-      reason: result.reason ?? null,
-      intent: result.model?.intent ?? null,
-      confidence: result.model?.confidence ?? null,
-      provider: result.model?.provider ?? null,
-      model: result.model?.model ?? null,
-      ownershipState: result.ownershipState ?? null
-    }
+    payload
   });
 }
 
