@@ -79,7 +79,8 @@ function orchestratorForTenant(tenant) {
       channelSender: senderForTenant(tenant),
       auditStore,
       actionGateway,
-      conversationStore
+      conversationStore,
+      outboundAttributionStore: storageRuntime.outboundAttributionStore
     });
   });
 }
