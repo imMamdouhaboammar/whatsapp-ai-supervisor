@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 77,
-  "edgeCount": 129,
+  "moduleCount": 81,
+  "edgeCount": 134,
   "cycles": [],
   "nodes": [
     {
@@ -555,6 +555,38 @@
       ]
     },
     {
+      "id": "src/core/conversation-ownership-store.js",
+      "group": "decision",
+      "lines": 40,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "ownershipKey"
+        },
+        {
+          "kind": "function",
+          "name": "assertOwnershipTransitionInput"
+        },
+        {
+          "kind": "function",
+          "name": "defaultOwnershipFor"
+        },
+        {
+          "kind": "class",
+          "name": "ConversationOwnershipStore"
+        }
+      ],
+      "imports": [
+        "src/domain/conversation-ownership.js"
+      ],
+      "importedBy": [
+        "src/core/file-conversation-ownership-store.js",
+        "src/storage/postgres-conversation-ownership-store.js"
+      ],
+      "external": [],
+      "tests": []
+    },
+    {
       "id": "src/core/file-audit-store.js",
       "group": "decision",
       "lines": 49,
@@ -598,6 +630,29 @@
       ],
       "tests": [
         "tests/file-stores.test.js"
+      ]
+    },
+    {
+      "id": "src/core/file-conversation-ownership-store.js",
+      "group": "decision",
+      "lines": 102,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "FileConversationOwnershipStore"
+        }
+      ],
+      "imports": [
+        "src/core/conversation-ownership-store.js",
+        "src/domain/conversation-ownership.js"
+      ],
+      "importedBy": [],
+      "external": [
+        "node:fs",
+        "node:path"
+      ],
+      "tests": [
+        "tests/file-conversation-ownership-store.test.js"
       ]
     },
     {
@@ -666,6 +721,43 @@
       "tests": [
         "tests/tenant-store-crud.test.js",
         "tests/tenant-store-linked-device.test.js"
+      ]
+    },
+    {
+      "id": "src/domain/conversation-ownership.js",
+      "group": "decision",
+      "lines": 107,
+      "exports": [
+        {
+          "kind": "const",
+          "name": "CONVERSATION_OWNERSHIP_STATES"
+        },
+        {
+          "kind": "const",
+          "name": "CONVERSATION_OWNERSHIP_COMMANDS"
+        },
+        {
+          "kind": "function",
+          "name": "assertConversationOwnership"
+        },
+        {
+          "kind": "function",
+          "name": "createInitialOwnership"
+        },
+        {
+          "kind": "function",
+          "name": "transitionOwnership"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/core/conversation-ownership-store.js",
+        "src/core/file-conversation-ownership-store.js",
+        "src/storage/postgres-conversation-ownership-store.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/conversation-ownership.test.js"
       ]
     },
     {
@@ -1137,6 +1229,26 @@
       "tests": [
         "tests/postgres-durable-runtime.test.js",
         "tests/postgres-integration.mjs"
+      ]
+    },
+    {
+      "id": "src/storage/postgres-conversation-ownership-store.js",
+      "group": "other",
+      "lines": 170,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "PostgresConversationOwnershipStore"
+        }
+      ],
+      "imports": [
+        "src/core/conversation-ownership-store.js",
+        "src/domain/conversation-ownership.js"
+      ],
+      "importedBy": [],
+      "external": [],
+      "tests": [
+        "tests/postgres-conversation-ownership-store.test.js"
       ]
     },
     {
@@ -2024,6 +2136,18 @@
       "to": "src/channels/whatsapp-linked-device.js"
     },
     {
+      "from": "src/core/conversation-ownership-store.js",
+      "to": "src/domain/conversation-ownership.js"
+    },
+    {
+      "from": "src/core/file-conversation-ownership-store.js",
+      "to": "src/domain/conversation-ownership.js"
+    },
+    {
+      "from": "src/core/file-conversation-ownership-store.js",
+      "to": "src/core/conversation-ownership-store.js"
+    },
+    {
       "from": "src/core/orchestrator.js",
       "to": "src/domain/permission-engine.js"
     },
@@ -2154,6 +2278,14 @@
     {
       "from": "src/server.js",
       "to": "src/realtime/sse-broadcaster.js"
+    },
+    {
+      "from": "src/storage/postgres-conversation-ownership-store.js",
+      "to": "src/domain/conversation-ownership.js"
+    },
+    {
+      "from": "src/storage/postgres-conversation-ownership-store.js",
+      "to": "src/core/conversation-ownership-store.js"
     },
     {
       "from": "src/storage/postgres-domain-event-store.js",
