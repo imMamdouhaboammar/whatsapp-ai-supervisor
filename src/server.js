@@ -89,6 +89,7 @@ const inboundProcessing = createInboundProcessingRuntime({
   orchestratorForTenant,
   auditStore,
   conversationStore,
+  ownershipStore: storageRuntime.ownershipStore,
   domainEventStore: storageRuntime.domainEventStore,
   sseBroadcaster,
   jobQueue: storageRuntime.jobQueue
