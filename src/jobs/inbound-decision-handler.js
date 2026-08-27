@@ -13,15 +13,28 @@ function createDecisionDomainEvent(inboundEvent, result) {
       intent: result.model?.intent ?? null,
       confidence: result.model?.confidence ?? null,
       provider: result.model?.provider ?? null,
-      model: result.model?.model ?? null
+      model: result.model?.model ?? null,
+      ownershipState: result.ownershipState ?? null
     }
   });
+}
+
+function ownershipBlockResult(state) {
+  const reason = `ownership_${String(state).toLowerCase()}`;
+  return {
+    action: 'human',
+    reason,
+    ownershipState: state,
+    model: null,
+    permission: { action: 'human', reason }
+  };
 }
 
 export function createInboundDecisionHandler({
   orchestratorForTenant,
   auditStore,
   conversationStore = null,
+  ownershipStore = null,
   domainEventStore = null,
   sseBroadcaster = null
 }) {
@@ -36,21 +49,31 @@ export function createInboundDecisionHandler({
     }
 
     let result;
-    if (conversationStore?.isHumanControlled(tenant.id, message.customerId)) {
+    if (ownershipStore?.get) {
+      const conversationId = inboundEvent.conversationId ?? `${message.channel}:${message.customerId}`;
+      const ownership = await ownershipStore.get(tenant.id, conversationId);
+      if (ownership.state !== 'AI_ACTIVE') {
+        result = ownershipBlockResult(ownership.state);
+      }
+    }
+
+    if (!result && !ownershipStore?.get && conversationStore?.isHumanControlled(tenant.id, message.customerId)) {
       result = {
         action: 'human',
         reason: 'human_takeover',
         model: null,
         permission: { action: 'human', reason: 'human_takeover' }
       };
-    } else {
+    }
+
+    if (!result) {
       result = await orchestratorForTenant(tenant).handle(message, tenant);
     }
 
     const attemptedDecisionEvent = createDecisionDomainEvent(inboundEvent, result);
     const decisionDomainEvent = await domainEventStore?.append(attemptedDecisionEvent) ?? attemptedDecisionEvent;
 
-    if (result.action === 'human' && result.reason === 'human_takeover') {
+    if (result.action === 'human' && (result.reason === 'human_takeover' || String(result.reason ?? '').startsWith('ownership_'))) {
       auditStore.append({
         id: crypto.randomUUID(),
         tenantId: tenant.id,
@@ -60,7 +83,7 @@ export function createInboundDecisionHandler({
         at: decisionDomainEvent.occurredAt,
         model: null,
         permission: result.permission,
-        result: { action: 'human', reason: 'human_takeover', wouldAction: null }
+        result: { action: 'human', reason: result.reason, wouldAction: null }
       });
     }
 
