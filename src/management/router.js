@@ -1,4 +1,6 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { createDomainEvent } from '../domain/domain-event.js';
+import { createOutboundAttribution } from '../domain/outbound-attribution.js';
 import { buildActions, buildOverview, recentAuditEvents, sanitizeTenant } from './dashboard.js';
 
 function sendJson(res, status, body) {
@@ -54,11 +56,102 @@ function matchPath(pathname, pattern) {
   return params;
 }
 
+function conversationIdFor(customerId) {
+  const customer = String(customerId ?? '').trim();
+  if (!customer) throw new Error('conversation_customer_id_required');
+  return `whatsapp:${customer}`;
+}
+
+function expectedVersionFrom(body, fallback) {
+  if (body.expectedVersion === undefined || body.expectedVersion === null) return fallback;
+  const version = Number(body.expectedVersion);
+  if (!Number.isInteger(version) || version < 0) {
+    const error = new Error('ownership_expected_version_invalid');
+    error.statusCode = 400;
+    throw error;
+  }
+  return version;
+}
+
+function transitionIdFrom(body) {
+  const supplied = String(body.transitionId ?? '').trim();
+  if (supplied.length > 200) {
+    const error = new Error('ownership_transition_id_too_long');
+    error.statusCode = 400;
+    throw error;
+  }
+  return supplied || `management:${randomUUID()}`;
+}
+
+async function transitionManagementOwnership({
+  ownershipStore,
+  domainEventStore,
+  sseBroadcaster,
+  conversationStore,
+  tenantId,
+  customerId,
+  mode,
+  body
+}) {
+  if (!ownershipStore?.get || !ownershipStore?.transition) {
+    conversationStore.setControl(tenantId, customerId, mode);
+    return null;
+  }
+
+  const conversationId = conversationIdFor(customerId);
+  const previous = await ownershipStore.get(tenantId, conversationId);
+  const transitionId = transitionIdFrom(body);
+  const command = mode === 'human' ? 'manual_takeover' : 'release_to_agent';
+  const reasonCode = mode === 'human' ? 'management_takeover' : 'management_release';
+  const current = await ownershipStore.transition({
+    tenantId,
+    conversationId,
+    command,
+    transitionId,
+    actor: 'operator:management',
+    reasonCode,
+    expectedVersion: expectedVersionFrom(body, previous.version)
+  });
+
+  conversationStore.setControl(tenantId, customerId, current.state === 'HUMAN_ACTIVE' ? 'human' : 'ai');
+
+  if (current.version !== previous.version || current.state !== previous.state) {
+    const attemptedEvent = createDomainEvent({
+      eventType: 'conversation.ownership_changed',
+      tenantId,
+      conversationId,
+      idempotencyKey: `${tenantId}:${conversationId}:${transitionId}:ownership_changed`,
+      actor: { type: 'operator', id: 'management' },
+      payload: {
+        previousState: previous.state,
+        state: current.state,
+        version: current.version,
+        reasonCode: current.reasonCode
+      }
+    });
+    const event = await domainEventStore?.append(attemptedEvent) ?? attemptedEvent;
+    sseBroadcaster?.broadcastDomainEvent?.(event);
+  }
+
+  return current;
+}
+
+async function projectOwnership(conversations, ownershipStore) {
+  if (!ownershipStore?.get) return conversations;
+  return Promise.all(conversations.map(async (conversation) => ({
+    ...conversation,
+    ownership: await ownershipStore.get(conversation.tenantId, conversationIdFor(conversation.customerId))
+  })));
+}
+
 export function createManagementRouter({
   token = null,
   tenantStore,
   auditStore,
   conversationStore,
+  ownershipStore = null,
+  outboundAttributionStore = null,
+  domainEventStore = null,
   readiness,
   linkedDeviceStatus,
   manualSend,
@@ -171,7 +264,8 @@ export function createManagementRouter({
         const tenantId = url.searchParams.get('tenantId');
         if (!tenantId) return sendJson(res, 400, { error: 'tenantId_required' });
         requireTenant(tenantStore, tenantId);
-        return sendJson(res, 200, { conversations: conversationStore.list(tenantId) });
+        const conversations = await projectOwnership(conversationStore.list(tenantId), ownershipStore);
+        return sendJson(res, 200, { conversations });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/management/conversations/control') {
@@ -183,8 +277,17 @@ export function createManagementRouter({
           return sendJson(res, 400, { error: 'invalid_conversation_control' });
         }
         requireTenant(tenantStore, tenantId);
-        conversationStore.setControl(tenantId, customerId, mode);
-        return sendJson(res, 200, { tenantId, customerId, mode });
+        const ownership = await transitionManagementOwnership({
+          ownershipStore,
+          domainEventStore,
+          sseBroadcaster,
+          conversationStore,
+          tenantId,
+          customerId,
+          mode,
+          body
+        });
+        return sendJson(res, 200, { tenantId, customerId, mode, ...(ownership ? { ownership } : {}) });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/management/conversations/send') {
@@ -194,17 +297,45 @@ export function createManagementRouter({
         const text = typeof body.text === 'string' ? body.text.trim() : '';
         if (!tenantId || !customerId || !text) return sendJson(res, 400, { error: 'invalid_manual_send' });
         const tenant = requireTenant(tenantStore, tenantId);
-        if (!conversationStore.isHumanControlled(tenantId, customerId)) {
+
+        if (ownershipStore?.get) {
+          const current = await ownershipStore.get(tenantId, conversationIdFor(customerId));
+          if (current.state !== 'HUMAN_ACTIVE') {
+            return sendJson(res, 409, { error: 'human_takeover_required', ownership: { state: current.state, version: current.version } });
+          }
+        } else if (!conversationStore.isHumanControlled(tenantId, customerId)) {
           return sendJson(res, 409, { error: 'human_takeover_required' });
         }
+
         const outbound = await manualSend(tenant, { to: customerId, text });
-        conversationStore.recordManualOutbound({
-          tenantId,
-          customerId,
-          text,
-          messageId: outbound?.messages?.[0]?.id ?? outbound?.id ?? null
-        });
-        return sendJson(res, 200, { sent: true, outbound });
+        const platformMessageId = outbound?.platformMessageId ?? outbound?.messages?.[0]?.id ?? outbound?.id ?? null;
+        conversationStore.recordManualOutbound({ tenantId, customerId, text, messageId: platformMessageId });
+
+        let attribution = null;
+        if (
+          outbound?.transport === 'linked-device' &&
+          outbound?.sessionId &&
+          platformMessageId &&
+          outboundAttributionStore?.record
+        ) {
+          try {
+            const record = createOutboundAttribution({
+              tenantId,
+              sessionId: outbound.sessionId,
+              conversationId: conversationIdFor(customerId),
+              customerId,
+              platformMessageId,
+              origin: 'operator_api',
+              sourceMessageId: null
+            });
+            await outboundAttributionStore.record(record);
+            attribution = { recorded: true };
+          } catch {
+            attribution = { recorded: false, reason: 'attribution_failed' };
+          }
+        }
+
+        return sendJson(res, 200, { sent: true, outbound, ...(attribution ? { attribution } : {}) });
       }
 
       if (req.method === 'GET' && url.pathname === '/api/management/audit') {
