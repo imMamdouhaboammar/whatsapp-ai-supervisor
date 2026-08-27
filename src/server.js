@@ -156,6 +156,8 @@ const server = createHttpServer({
   auditStore,
   claimStore: storageRuntime.claimStore,
   domainEventStore: storageRuntime.domainEventStore,
+  ownershipStore: storageRuntime.ownershipStore,
+  outboundAttributionStore: storageRuntime.outboundAttributionStore,
   jobQueue: storageRuntime.jobQueue,
   inboundDecisionHandler: inboundProcessing.decisionHandler,
   readiness,
