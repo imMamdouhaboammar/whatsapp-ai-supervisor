@@ -83,6 +83,14 @@ export class WhatsAppLinkedDeviceSender {
     if (!response.ok) {
       throw new Error(`Linked-device send failed (${response.status}): ${body.error ?? 'unknown_error'}`);
     }
-    return body;
+
+    const platformMessageId = String(body?.id ?? '').trim();
+    return {
+      ...body,
+      id: platformMessageId || null,
+      platformMessageId: platformMessageId || null,
+      transport: 'linked-device',
+      sessionId: this.sessionId
+    };
   }
 }
