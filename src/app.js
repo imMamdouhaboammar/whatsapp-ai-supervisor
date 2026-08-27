@@ -1,8 +1,8 @@
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { normalizeWhatsAppWebhook, validateMetaSignature, verifyWebhookChallenge } from './channels/whatsapp-cloud.js';
-import { normalizeLinkedDeviceInbound } from './channels/whatsapp-linked-device.js';
-import { createDomainEvent } from './domain/domain-event.js';
+import { normalizeLinkedDeviceInbound, normalizeLinkedDeviceOutboundObservation } from './channels/whatsapp-linked-device.js';
+import { createDomainEvent, deriveDomainEvent } from './domain/domain-event.js';
 import { createInboundDecisionHandler } from './jobs/inbound-decision-handler.js';
 import { serveStaticUi } from './management/static-ui.js';
 
@@ -56,6 +56,53 @@ function createInboundDomainEvent(message, tenant, connectorId) {
   });
 }
 
+function createHumanOutboundEvent(observation, tenant) {
+  return createDomainEvent({
+    eventType: 'human.outbound_observed',
+    tenantId: tenant.id,
+    conversationId: conversationIdFor(observation),
+    messageId: observation.id,
+    idempotencyKey: `${tenant.id}:${observation.sessionId}:${observation.id}:human.outbound_observed`,
+    actor: { type: 'operator', id: `linked-device:${observation.sessionId}` },
+    payload: {
+      channel: observation.channel,
+      transport: observation.transport,
+      sessionId: observation.sessionId,
+      customerId: observation.customerId,
+      customerName: observation.customerName ?? null,
+      text: observation.text ?? '',
+      platformMessageId: observation.platformMessageId
+    }
+  });
+}
+
+async function forceHumanOwnership({ ownershipStore, tenant, observation }) {
+  if (!ownershipStore?.get || !ownershipStore?.transition) throw new Error('ownership_store_required');
+  const conversationId = conversationIdFor(observation);
+  let current = await ownershipStore.get(tenant.id, conversationId);
+  const transitionId = `linked-device:${observation.sessionId}:${observation.platformMessageId}:takeover`;
+  const transitionInput = () => ({
+    tenantId: tenant.id,
+    conversationId,
+    command: 'manual_takeover',
+    transitionId,
+    actor: `operator:linked-device:${observation.sessionId}`,
+    reasonCode: 'manual_outbound_observed',
+    expectedVersion: current.version
+  });
+
+  try {
+    const next = await ownershipStore.transition(transitionInput());
+    return { previous: current, current: next, changed: next.state !== current.state || next.version !== current.version };
+  } catch (error) {
+    if (error?.message !== 'ownership_version_conflict') throw error;
+    current = await ownershipStore.get(tenant.id, conversationId);
+    if (current.state === 'HUMAN_ACTIVE') return { previous: current, current, changed: false };
+    const next = await ownershipStore.transition(transitionInput());
+    return { previous: current, current: next, changed: next.state !== current.state || next.version !== current.version };
+  }
+}
+
 export function createHttpServer({
   verifyToken,
   appSecret,
@@ -64,6 +111,8 @@ export function createHttpServer({
   auditStore,
   claimStore = null,
   domainEventStore = null,
+  ownershipStore = null,
+  outboundAttributionStore = null,
   jobQueue = null,
   inboundDecisionHandler = null,
   readiness = null,
@@ -87,6 +136,7 @@ export function createHttpServer({
     orchestratorForTenant,
     auditStore,
     conversationStore,
+    ownershipStore,
     domainEventStore,
     sseBroadcaster
   });
@@ -123,6 +173,82 @@ export function createHttpServer({
         duplicates: 0,
         failures: [{ messageId: message.id, error: 'processing_failed' }]
       };
+    }
+  }
+
+  async function processLinkedDeviceOutbound(observation, tenant) {
+    let attribution = null;
+    try {
+      attribution = await outboundAttributionStore?.findByPlatformMessageId?.(
+        tenant.id,
+        observation.sessionId,
+        observation.platformMessageId
+      ) ?? null;
+    } catch {
+      attribution = null;
+    }
+
+    if (attribution) {
+      try {
+        await outboundAttributionStore?.consumeEcho?.(
+          tenant.id,
+          observation.sessionId,
+          observation.platformMessageId
+        );
+      } catch {}
+      return { status: 202, body: { ignored: true, origin: `${attribution.origin}_echo` } };
+    }
+
+    const claimKey = `${tenant.id}:human-outbound:${observation.sessionId}:${observation.platformMessageId}`;
+    if (!(await claims.claim(claimKey))) {
+      return { status: 202, body: { ignored: true, duplicate: true } };
+    }
+
+    try {
+      const attemptedHumanEvent = createHumanOutboundEvent(observation, tenant);
+      const humanEvent = await domainEventStore?.append(attemptedHumanEvent) ?? attemptedHumanEvent;
+      const ownership = await forceHumanOwnership({ ownershipStore, tenant, observation });
+
+      conversationStore?.recordManualOutbound?.({
+        tenantId: tenant.id,
+        customerId: observation.customerId,
+        customerName: observation.customerName ?? null,
+        text: observation.text,
+        messageId: observation.platformMessageId,
+        at: humanEvent.occurredAt
+      });
+      conversationStore?.setControl?.(tenant.id, observation.customerId, 'human', humanEvent.occurredAt);
+      sseBroadcaster?.broadcastDomainEvent?.(humanEvent);
+
+      if (ownership.changed) {
+        const attemptedOwnershipEvent = deriveDomainEvent(humanEvent, {
+          eventType: 'conversation.ownership_changed',
+          idempotencyKey: `${humanEvent.idempotencyKey}:ownership_changed`,
+          actor: { type: 'operator', id: `linked-device:${observation.sessionId}` },
+          payload: {
+            previousState: ownership.previous.state,
+            state: ownership.current.state,
+            version: ownership.current.version,
+            reasonCode: ownership.current.reasonCode
+          }
+        });
+        const ownershipEvent = await domainEventStore?.append(attemptedOwnershipEvent) ?? attemptedOwnershipEvent;
+        sseBroadcaster?.broadcastDomainEvent?.(ownershipEvent);
+      }
+
+      return {
+        status: 200,
+        body: {
+          observed: true,
+          ownership: {
+            state: ownership.current.state,
+            version: ownership.current.version
+          }
+        }
+      };
+    } catch (error) {
+      await claims.release(claimKey);
+      throw error;
     }
   }
 
@@ -194,7 +320,14 @@ export function createHttpServer({
         const tenant = tenantStore.findByLinkedDeviceSessionId?.(sessionId);
         if (!tenant) return sendJson(res, 404, { error: 'linked_device_session_not_found' });
 
-        const message = normalizeLinkedDeviceInbound(payload, { allowGroups: tenant.whatsapp?.allowGroups === true });
+        const options = { allowGroups: tenant.whatsapp?.allowGroups === true };
+        const outboundObservation = normalizeLinkedDeviceOutboundObservation(payload, options);
+        if (outboundObservation) {
+          const outcome = await processLinkedDeviceOutbound(outboundObservation, tenant);
+          return sendJson(res, outcome.status, outcome.body);
+        }
+
+        const message = normalizeLinkedDeviceInbound(payload, options);
         if (!message) return sendJson(res, 202, { ignored: true });
         const result = await processMessage(message, tenant, 'whatsapp-linked-device');
         return sendJson(res, 200, { received: 1, ...result });
