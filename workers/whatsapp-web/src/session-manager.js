@@ -219,19 +219,21 @@ export class WhatsAppWebSessionManager {
   async handleInbound(record, msg, definition) {
     const from = String(msg?.from ?? '');
     const to = String(msg?.to ?? '');
-    const isSelfChat = Boolean(msg?.fromMe && (from === to || (to && from.includes(to)) || (from && to.includes(from))));
-    const isGroup = isGroupAddress(from) || isGroupAddress(to);
+    const fromMe = Boolean(msg?.fromMe);
+    const isSelfChat = Boolean(fromMe && (from === to || (to && from.includes(to)) || (from && to.includes(from))));
+    const peer = fromMe ? to : from;
+    const isGroup = isGroupAddress(peer) || isGroupAddress(from) || isGroupAddress(to);
 
-    if (msg?.fromMe && !isSelfChat) return;
     if (from === 'status@broadcast' || to === 'status@broadcast') return;
     if (msg?.type && msg.type !== 'chat' && msg.type !== 'text' && msg.type !== 'conversation') return;
     if (isGroup && definition?.allowGroups !== true) return;
+    if (fromMe && !isSelfChat && !peer) return;
 
     const id = messageIdOf(msg);
     const text = typeof msg?.body === 'string' ? msg.body.trim() : (typeof msg?.text === 'string' ? msg.text.trim() : '');
-    if (!id || !from || !text) return;
+    if (!id || !peer || !text) return;
 
-    this.logger.info?.(`[whatsapp-web] session ${record.sessionId} received message: from=${from} to=${to} text="${text.slice(0, 40)}" isSelf=${isSelfChat}`);
+    this.logger.info?.(`[whatsapp-web] session ${record.sessionId} observed message: peer=${peer} fromMe=${fromMe} text="${text.slice(0, 40)}" isSelf=${isSelfChat}`);
 
     let customerName = null;
     if (typeof msg.getContact === 'function') {
@@ -245,12 +247,13 @@ export class WhatsAppWebSessionManager {
       sessionId: record.sessionId,
       message: {
         id,
-        from: isSelfChat ? (to || from) : from,
+        from: peer,
+        to: peer,
         customerName,
         text,
         timestamp: Number(msg.timestamp ?? Math.floor(Date.now() / 1000)),
         type: 'chat',
-        fromMe: false,
+        fromMe: fromMe && !isSelfChat,
         isGroup
       }
     });
