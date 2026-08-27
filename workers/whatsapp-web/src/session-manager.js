@@ -19,6 +19,12 @@ function optionalOperationId(value) {
   return operationId;
 }
 
+function createCompletion() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 export class WhatsAppWebSessionManager {
   constructor({
     Client,
@@ -34,6 +40,7 @@ export class WhatsAppWebSessionManager {
     maxSendQueue = 100,
     recentApiMessageTtlMs = 60_000,
     maxRecentApiMessages = 1_000,
+    apiOriginResolutionMs = 5_000,
     now = () => Date.now(),
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   }) {
@@ -52,6 +59,7 @@ export class WhatsAppWebSessionManager {
     this.maxSendQueue = Math.max(1, Number(maxSendQueue) || 1);
     this.recentApiMessageTtlMs = Math.max(1_000, Number(recentApiMessageTtlMs) || 60_000);
     this.maxRecentApiMessages = Math.max(10, Number(maxRecentApiMessages) || 1_000);
+    this.apiOriginResolutionMs = Math.max(50, Number(apiOriginResolutionMs) || 5_000);
     this.now = now;
     this.sleep = sleep;
     this.sessions = new Map();
@@ -240,14 +248,27 @@ export class WhatsAppWebSessionManager {
     }
   }
 
-  apiOriginFor(record, { id, peer, text }) {
+  async waitForActiveCompletion(active) {
+    let timeoutId;
+    const timeout = new Promise((resolve) => {
+      timeoutId = this.setTimeoutImpl(() => resolve(null), this.apiOriginResolutionMs);
+    });
+    const result = await Promise.race([active.completion, timeout]);
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    return result;
+  }
+
+  async apiOriginFor(record, { id, peer, text }) {
     this.pruneRecentApiMessages(record);
     const recent = record.recentApiMessageIds.get(id);
     if (recent) return { originHint: 'worker_api', apiSendOperationId: recent.operationId };
 
     const active = record.activeApiSend;
     if (active && active.peer === peer && active.text === text) {
-      return { originHint: 'worker_api', apiSendOperationId: active.operationId };
+      const completed = await this.waitForActiveCompletion(active);
+      if (completed?.messageId === id) {
+        return { originHint: 'worker_api', apiSendOperationId: active.operationId };
+      }
     }
     return null;
   }
@@ -269,7 +290,7 @@ export class WhatsAppWebSessionManager {
     const text = typeof msg?.body === 'string' ? msg.body.trim() : (typeof msg?.text === 'string' ? msg.text.trim() : '');
     if (!id || !peer || !text) return;
 
-    const apiOrigin = fromMe && !isSelfChat ? this.apiOriginFor(record, { id, peer, text }) : null;
+    const apiOrigin = fromMe && !isSelfChat ? await this.apiOriginFor(record, { id, peer, text }) : null;
     this.logger.info?.(`[whatsapp-web] session ${record.sessionId} observed message: peer=${peer} fromMe=${fromMe} text="${text.slice(0, 40)}" isSelf=${isSelfChat}`);
 
     let customerName = null;
@@ -315,13 +336,15 @@ export class WhatsAppWebSessionManager {
       if (waitMs > 0) await this.sleep(waitMs);
       const target = to.includes('@') ? to : `${to}@c.us`;
       const normalizedText = text.trim();
+      const completion = normalizedOperation ? createCompletion() : null;
 
       if (normalizedOperation) {
         record.activeApiSend = {
           operationId: normalizedOperation,
           peer: target,
           text: normalizedText,
-          startedAt: this.now()
+          startedAt: this.now(),
+          completion: completion.promise
         };
       }
 
@@ -336,7 +359,11 @@ export class WhatsAppWebSessionManager {
           });
           this.pruneRecentApiMessages(record);
         }
+        completion?.resolve({ messageId });
         return { id: messageId, ...(normalizedOperation ? { operationId: normalizedOperation } : {}) };
+      } catch (error) {
+        completion?.resolve({ messageId: null });
+        throw error;
       } finally {
         if (normalizedOperation && record.activeApiSend?.operationId === normalizedOperation) {
           record.activeApiSend = null;
