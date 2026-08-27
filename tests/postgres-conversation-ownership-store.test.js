@@ -85,6 +85,7 @@ test('postgres ownership store returns historical duplicate transition without c
   const client = new FakeClient((query) => {
     if (query.text === 'BEGIN' || query.text === 'COMMIT') return { rows: [], rowCount: 0 };
     if (/INSERT INTO conversation_ownership \(/i.test(query.text)) return { rows: [], rowCount: 1 };
+    if (/SELECT \* FROM conversation_ownership/i.test(query.text) && /FOR UPDATE/i.test(query.text)) return { rows: [row('AI_ACTIVE', 2, 'release-1')], rowCount: 1 };
     if (/SELECT result FROM conversation_ownership_transitions/i.test(query.text)) return { rows: [{ result: historical }], rowCount: 1 };
     throw new Error(`unexpected query: ${query.text}`);
   });
