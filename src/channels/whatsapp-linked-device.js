@@ -8,35 +8,66 @@ function canonicalWhatsAppId(value) {
   return String(value).trim().replace(/@(c|lid)\.us$/i, '');
 }
 
-export function whatsappTransportMode(tenant) {
-  return String(tenant?.whatsapp?.mode ?? 'cloud').toLowerCase();
-}
-
-export function normalizeLinkedDeviceInbound(payload, { allowGroups = false } = {}) {
+function linkedDeviceMessageParts(payload, { allowGroups = false } = {}) {
   const sessionId = String(payload?.sessionId ?? '').trim();
   const message = payload?.message;
   if (!sessionId || !message || typeof message !== 'object') throw new Error('invalid_linked_device_payload');
-  if (message.fromMe) return null;
-  if (message.from === 'status@broadcast') return null;
+  const from = String(message.from ?? '').trim();
+  const to = String(message.to ?? '').trim();
+  const peer = message.fromMe ? (to || from) : from;
+  if (from === 'status@broadcast' || to === 'status@broadcast' || peer === 'status@broadcast') return null;
   if (message.type !== 'chat') return null;
   if (message.isGroup && !allowGroups) return null;
 
   const id = String(message.id ?? '').trim();
-  const from = String(message.from ?? '').trim();
-  const customerId = canonicalWhatsAppId(from);
+  const customerId = canonicalWhatsAppId(peer);
   const text = typeof message.text === 'string' ? message.text.trim() : '';
   if (!id || !customerId || !text) throw new Error('invalid_linked_device_message');
-
   const timestamp = Number(message.timestamp ?? 0);
   return {
-    id,
-    channel: 'whatsapp',
-    transport: 'linked-device',
     sessionId,
+    message,
+    id,
     customerId,
     customerName: typeof message.customerName === 'string' && message.customerName.trim() ? message.customerName.trim() : null,
     text,
     timestamp: Number.isFinite(timestamp) ? timestamp : 0
+  };
+}
+
+export function whatsappTransportMode(tenant) {
+  return String(tenant?.whatsapp?.mode ?? 'cloud').toLowerCase();
+}
+
+export function normalizeLinkedDeviceInbound(payload, options = {}) {
+  const parts = linkedDeviceMessageParts(payload, options);
+  if (!parts || parts.message.fromMe) return null;
+  return {
+    id: parts.id,
+    channel: 'whatsapp',
+    transport: 'linked-device',
+    sessionId: parts.sessionId,
+    customerId: parts.customerId,
+    customerName: parts.customerName,
+    text: parts.text,
+    timestamp: parts.timestamp
+  };
+}
+
+export function normalizeLinkedDeviceOutboundObservation(payload, options = {}) {
+  const parts = linkedDeviceMessageParts(payload, options);
+  if (!parts || !parts.message.fromMe) return null;
+  return {
+    id: parts.id,
+    platformMessageId: parts.id,
+    channel: 'whatsapp',
+    transport: 'linked-device',
+    sessionId: parts.sessionId,
+    customerId: parts.customerId,
+    customerName: parts.customerName,
+    text: parts.text,
+    timestamp: parts.timestamp,
+    fromMe: true
   };
 }
 
