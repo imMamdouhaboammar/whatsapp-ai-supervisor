@@ -12,6 +12,13 @@ function isGroupAddress(value) {
   return String(value ?? '').endsWith('@g.us');
 }
 
+function optionalOperationId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const operationId = String(value).trim();
+  if (!operationId || operationId.length > 200) throw new Error('invalid_send_payload');
+  return operationId;
+}
+
 export class WhatsAppWebSessionManager {
   constructor({
     Client,
@@ -25,6 +32,8 @@ export class WhatsAppWebSessionManager {
     setTimeoutImpl = setTimeout,
     minSendIntervalMs = 350,
     maxSendQueue = 100,
+    recentApiMessageTtlMs = 60_000,
+    maxRecentApiMessages = 1_000,
     now = () => Date.now(),
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   }) {
@@ -41,6 +50,8 @@ export class WhatsAppWebSessionManager {
     this.setTimeoutImpl = setTimeoutImpl;
     this.minSendIntervalMs = Math.max(0, Number(minSendIntervalMs) || 0);
     this.maxSendQueue = Math.max(1, Number(maxSendQueue) || 1);
+    this.recentApiMessageTtlMs = Math.max(1_000, Number(recentApiMessageTtlMs) || 60_000);
+    this.maxRecentApiMessages = Math.max(10, Number(maxRecentApiMessages) || 1_000);
     this.now = now;
     this.sleep = sleep;
     this.sessions = new Map();
@@ -113,7 +124,9 @@ export class WhatsAppWebSessionManager {
       restartScheduled: false,
       sendTail: Promise.resolve(),
       pendingSends: 0,
-      lastSentAt: 0
+      lastSentAt: 0,
+      activeApiSend: null,
+      recentApiMessageIds: new Map()
     };
     this.sessions.set(sessionId, record);
     this.bindClient(record);
@@ -216,6 +229,29 @@ export class WhatsAppWebSessionManager {
     }, delay);
   }
 
+  pruneRecentApiMessages(record) {
+    const now = this.now();
+    for (const [messageId, value] of record.recentApiMessageIds) {
+      if (value.expiresAt <= now) record.recentApiMessageIds.delete(messageId);
+    }
+    while (record.recentApiMessageIds.size > this.maxRecentApiMessages) {
+      const first = record.recentApiMessageIds.keys().next().value;
+      record.recentApiMessageIds.delete(first);
+    }
+  }
+
+  apiOriginFor(record, { id, peer, text }) {
+    this.pruneRecentApiMessages(record);
+    const recent = record.recentApiMessageIds.get(id);
+    if (recent) return { originHint: 'worker_api', apiSendOperationId: recent.operationId };
+
+    const active = record.activeApiSend;
+    if (active && active.peer === peer && active.text === text) {
+      return { originHint: 'worker_api', apiSendOperationId: active.operationId };
+    }
+    return null;
+  }
+
   async handleInbound(record, msg, definition) {
     const from = String(msg?.from ?? '');
     const to = String(msg?.to ?? '');
@@ -233,6 +269,7 @@ export class WhatsAppWebSessionManager {
     const text = typeof msg?.body === 'string' ? msg.body.trim() : (typeof msg?.text === 'string' ? msg.text.trim() : '');
     if (!id || !peer || !text) return;
 
+    const apiOrigin = fromMe && !isSelfChat ? this.apiOriginFor(record, { id, peer, text }) : null;
     this.logger.info?.(`[whatsapp-web] session ${record.sessionId} observed message: peer=${peer} fromMe=${fromMe} text="${text.slice(0, 40)}" isSelf=${isSelfChat}`);
 
     let customerName = null;
@@ -254,18 +291,20 @@ export class WhatsAppWebSessionManager {
         timestamp: Number(msg.timestamp ?? Math.floor(Date.now() / 1000)),
         type: 'chat',
         fromMe: fromMe && !isSelfChat,
-        isGroup
+        isGroup,
+        ...(apiOrigin ?? {})
       }
     });
     const flushRes = await this.spool.flushOnce();
     this.logger.info?.(`[whatsapp-web] delivered to supervisor: ${flushRes?.delivered ?? 'ok'}`);
   }
 
-  async sendText({ sessionId, to, text }) {
+  async sendText({ sessionId, to, text, operationId = null }) {
     const record = this.sessions.get(sessionId);
     if (!record) throw new Error('session_not_found');
     if (record.status !== 'ready' && record.status !== 'authenticated') throw new Error('session_not_ready');
     if (!to || typeof text !== 'string' || !text.trim()) throw new Error('invalid_send_payload');
+    const normalizedOperation = optionalOperationId(operationId);
     if (record.pendingSends >= this.maxSendQueue) throw new Error('send_queue_full');
 
     record.pendingSends += 1;
@@ -275,9 +314,34 @@ export class WhatsAppWebSessionManager {
       const waitMs = record.lastSentAt > 0 ? Math.max(0, this.minSendIntervalMs - elapsed) : 0;
       if (waitMs > 0) await this.sleep(waitMs);
       const target = to.includes('@') ? to : `${to}@c.us`;
-      const result = await record.client.sendMessage(target, text.trim());
-      record.lastSentAt = this.now();
-      return { id: result?.id?._serialized ?? null };
+      const normalizedText = text.trim();
+
+      if (normalizedOperation) {
+        record.activeApiSend = {
+          operationId: normalizedOperation,
+          peer: target,
+          text: normalizedText,
+          startedAt: this.now()
+        };
+      }
+
+      try {
+        const result = await record.client.sendMessage(target, normalizedText);
+        const messageId = result?.id?._serialized ?? null;
+        record.lastSentAt = this.now();
+        if (messageId && normalizedOperation) {
+          record.recentApiMessageIds.set(messageId, {
+            operationId: normalizedOperation,
+            expiresAt: this.now() + this.recentApiMessageTtlMs
+          });
+          this.pruneRecentApiMessages(record);
+        }
+        return { id: messageId, ...(normalizedOperation ? { operationId: normalizedOperation } : {}) };
+      } finally {
+        if (normalizedOperation && record.activeApiSend?.operationId === normalizedOperation) {
+          record.activeApiSend = null;
+        }
+      }
     });
     record.sendTail = operation.catch(() => {});
     try {
