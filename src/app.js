@@ -199,6 +199,13 @@ export function createHttpServer({
       return { status: 202, body: { ignored: true, origin: `${attribution.origin}_echo` } };
     }
 
+    if (observation.originHint === 'worker_api' && observation.apiSendOperationId) {
+      return {
+        status: 202,
+        body: { ignored: true, origin: 'worker_api_echo_pending_attribution' }
+      };
+    }
+
     const claimKey = `${tenant.id}:human-outbound:${observation.sessionId}:${observation.platformMessageId}`;
     if (!(await claims.claim(claimKey))) {
       return { status: 202, body: { ignored: true, duplicate: true } };
