@@ -75,9 +75,12 @@ Request:
   "sessionId": "store-egypt",
   "to": "201000000000@c.us",
   "text": "Your order is ready",
-  "replyToId": null
+  "replyToId": null,
+  "operationId": "8ce2fcbe-4aed-4fb4-8b08-2ad4bdbd31f2"
 }
 ```
+
+`operationId` is generated before the Supervisor calls the worker and remains stable for that one send attempt. The worker also accepts legacy callers without the field and generates an operation ID internally.
 
 Current worker behavior:
 
@@ -86,9 +89,10 @@ Current worker behavior:
 - A minimum spacing is applied between sends.
 - Each session has a bounded pending-send queue.
 - Queue overflow returns HTTP 429 instead of allowing unbounded memory growth.
-- A successful response includes the WhatsApp platform message ID.
+- A successful response includes the WhatsApp platform message ID and the same `operationId`.
+- A worker response that changes an explicit Supervisor operation ID is rejected by the Supervisor sender.
 
-The Supervisor sender normalizes that result into an attribution-ready receipt containing `platformMessageId`, `sessionId`, and `transport: linked-device`.
+The Supervisor sender normalizes that result into an attribution-ready receipt containing `platformMessageId`, `sessionId`, `operationId`, and `transport: linked-device`.
 
 The Phase 1 worker does not use `replyToId` to create a quoted WhatsApp reply. The field remains in the protocol so later worker implementations can support it without changing the Supervisor sender contract.
 
@@ -148,7 +152,7 @@ A successful Supervisor response removes the spool item. Failed deliveries stay 
 
 `fromMe` means only that WhatsApp considers the message sent by the linked account. It does not prove a human operator sent it.
 
-Before the Supervisor sends a linked-device reply, it records the returned WhatsApp platform message ID in its outbound-attribution store. The origin is one of:
+Normal origin classification uses durable outbound attribution. After a linked-device send returns its WhatsApp platform message ID, the Supervisor stores that ID with one of these origins:
 
 ```text
 agent
@@ -160,9 +164,32 @@ When the same platform message later arrives from the worker as `fromMe: true`:
 1. The Supervisor looks up `(tenant, sessionId, platformMessageId)` in the attribution store.
 2. A matched `agent` record is consumed as an agent echo and does not change ownership.
 3. A matched `operator_api` record is consumed as the echo of a manual send already initiated through the operator API and does not create a second takeover event.
-4. An unmatched `fromMe` observation is treated as real manual operator activity from WhatsApp or another linked client.
+4. An unmatched `fromMe` observation is normally treated as real manual operator activity from WhatsApp or another linked client.
 
-An attribution lookup failure fails closed toward human control. It must never cause the Supervisor to assume an unknown `fromMe` message was agent-originated.
+### Pre-attribution send race
+
+WhatsApp Web can emit `message_create` for an outgoing message before `sendMessage()` returns its platform message ID. Without a second correlation mechanism, the echo could reach the Supervisor before durable attribution exists and be mistaken for manual human activity.
+
+The worker closes this race using the send `operationId`:
+
+1. Before calling the WhatsApp client, the worker records the active API send for that session with its operation ID, peer, and normalized text.
+2. If a matching `fromMe` event arrives while that send is still active, the authenticated worker adds:
+
+```json
+{
+  "originHint": "worker_api",
+  "apiSendOperationId": "8ce2fcbe-4aed-4fb4-8b08-2ad4bdbd31f2"
+}
+```
+
+3. After `sendMessage()` returns, the worker remembers the returned platform message ID and operation ID in a bounded, short-lived per-session cache so a later echo receives the same hint.
+4. The Supervisor always checks durable platform-message attribution first.
+5. If durable attribution is not available yet but the authenticated worker supplied both `originHint: worker_api` and a valid operation ID, the observation is treated as a pending API echo and cannot trigger human takeover.
+6. A missing, malformed, or incomplete hint does not bypass normal unmatched-`fromMe` takeover behavior.
+
+The worker hint is intentionally transient. Durable attribution remains the canonical audit record after the send returns.
+
+An attribution lookup failure normally fails closed toward human control. For a send that is still inside the pre-attribution window, a valid hint from the bearer-authenticated worker prevents a false takeover while preserving the rule that arbitrary unknown `fromMe` observations never gain agent authority.
 
 ## Manual human takeover
 
@@ -210,12 +237,13 @@ A replacement worker can use Baileys or another linked-device implementation if 
 
 1. durable session identity matching the configured `sessionId`
 2. authenticated private management endpoints
-3. the outbound `/v1/send-text` contract with a stable platform message ID
+3. the outbound `/v1/send-text` contract with a stable platform message ID and operation ID
 4. the Supervisor delivery contract above
 5. correct preservation of `fromMe` and peer identity
-6. durable retry before acknowledging observations as delivered
-7. reconnect and session-state reporting
-8. bounded outbound concurrency and backpressure
-9. secure persistence of linked-device authentication state
+6. pre-attribution API-send echo correlation or an equivalent race-free mechanism
+7. durable retry before acknowledging observations as delivered
+8. reconnect and session-state reporting
+9. bounded outbound concurrency and backpressure
+10. secure persistence of linked-device authentication state
 
 The replacement does not need to use a browser, Node.js, or the same local storage format.
