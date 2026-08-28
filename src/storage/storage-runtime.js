@@ -3,11 +3,13 @@ import { hostname } from 'node:os';
 import { FileClaimStore } from '../core/file-claim-store.js';
 import { FileConversationOwnershipStore } from '../core/file-conversation-ownership-store.js';
 import { FileOutboundAttributionStore } from '../core/file-outbound-attribution-store.js';
+import { FilePendingAgentTurnStore } from '../core/file-pending-agent-turn-store.js';
 import { probeDataDirectory } from '../runtime/readiness.js';
 import { PostgresClaimStore } from './postgres-claim-store.js';
 import { PostgresDomainEventStore } from './postgres-domain-event-store.js';
 import { PostgresConversationOwnershipStore } from './postgres-conversation-ownership-store.js';
 import { PostgresOutboundAttributionStore } from './postgres-outbound-attribution-store.js';
+import { PostgresPendingAgentTurnStore } from './postgres-pending-agent-turn-store.js';
 import { PostgresJobQueue } from '../jobs/postgres-job-queue.js';
 import { runPostgresMigrations } from './postgres-migrations.js';
 
@@ -36,6 +38,7 @@ export async function createStorageRuntime(config, {
       domainEventStore: null,
       ownershipStore: new FileConversationOwnershipStore({ dataDir }),
       outboundAttributionStore: new FileOutboundAttributionStore({ dataDir }),
+      pendingAgentTurnStore: new FilePendingAgentTurnStore({ dataDir }),
       jobQueue: null,
       probe: () => probeDataDirectory(dataDir),
       async close() {}
@@ -64,6 +67,7 @@ export async function createStorageRuntime(config, {
     domainEventStore: new PostgresDomainEventStore({ pool }),
     ownershipStore: new PostgresConversationOwnershipStore({ pool }),
     outboundAttributionStore: new PostgresOutboundAttributionStore({ pool }),
+    pendingAgentTurnStore: new PostgresPendingAgentTurnStore({ pool }),
     jobQueue: new PostgresJobQueue({ pool, ownerId }),
     async probe() {
       try {
