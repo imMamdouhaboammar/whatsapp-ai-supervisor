@@ -1,4 +1,4 @@
-import type { ActionEvent, AuditEvent, Conversation, ConversationControl, Overview, RuntimeInfo, Tenant, TenantCreatePayload, TenantUpdatePayload, WhatsAppNumber, WhatsAppSession } from './types';
+import type { ActionEvent, AuditEvent, Conversation, ConversationControl, ConversationOwnership, Overview, RuntimeInfo, Tenant, TenantCreatePayload, TenantUpdatePayload, WhatsAppNumber, WhatsAppSession } from './types';
 
 const TOKEN_KEY = 'was-management-token';
 
@@ -60,10 +60,16 @@ export const api = {
   whatsapp: () => request<{ sessions: WhatsAppSession[] }>('/api/management/whatsapp'),
 
   conversations: (tenantId: string) => request<{ conversations: Conversation[] }>(`/api/management/conversations?tenantId=${encodeURIComponent(tenantId)}`),
-  setConversationControl: (tenantId: string, customerId: string, mode: ConversationControl) => request<{ mode: ConversationControl }>('/api/management/conversations/control', {
-    method: 'POST',
-    body: JSON.stringify({ tenantId, customerId, mode })
-  }),
+  setConversationControl: (tenantId: string, customerId: string, mode: ConversationControl, expectedVersion?: number) =>
+    request<{ mode: ConversationControl; ownership?: ConversationOwnership }>('/api/management/conversations/control', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenantId,
+        customerId,
+        mode,
+        ...(Number.isInteger(expectedVersion) ? { expectedVersion } : {})
+      })
+    }),
   sendManual: (tenantId: string, customerId: string, text: string) => request<{ sent: boolean }>('/api/management/conversations/send', {
     method: 'POST',
     body: JSON.stringify({ tenantId, customerId, text })
@@ -85,4 +91,3 @@ export const api = {
       body: JSON.stringify(payload)
     })
 };
-

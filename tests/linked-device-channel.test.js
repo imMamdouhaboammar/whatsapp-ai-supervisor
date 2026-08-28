@@ -54,18 +54,20 @@ test('WhatsAppLinkedDeviceSender sends through worker with bearer auth and sessi
     baseUrl: 'http://wa-worker:7441',
     token: 'worker-secret',
     sessionId: 'acme-sales',
+    idFactory: () => 'op-send-1',
     fetchImpl: async (url, init) => {
       calls.push({ url, init });
-      return new Response(JSON.stringify({ id: 'out-1' }), { status: 200 });
+      return new Response(JSON.stringify({ id: 'out-1', operationId: 'op-send-1' }), { status: 200 });
     }
   });
 
   const result = await sender.sendText({ to: '20100@c.us', text: 'Hi', replyToId: 'in-1' });
   assert.equal(result.id, 'out-1');
+  assert.equal(result.operationId, 'op-send-1');
   assert.equal(calls[0].url, 'http://wa-worker:7441/v1/send-text');
   assert.equal(calls[0].init.headers.authorization, 'Bearer worker-secret');
   assert.deepEqual(JSON.parse(calls[0].init.body), {
-    sessionId: 'acme-sales', to: '20100@c.us', text: 'Hi', replyToId: 'in-1'
+    sessionId: 'acme-sales', to: '20100@c.us', text: 'Hi', replyToId: 'in-1', operationId: 'op-send-1'
   });
 });
 

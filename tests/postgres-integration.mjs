@@ -3,8 +3,11 @@ import { Pool } from 'pg';
 import { runPostgresMigrations } from '../src/storage/postgres-migrations.js';
 import { PostgresClaimStore } from '../src/storage/postgres-claim-store.js';
 import { PostgresDomainEventStore } from '../src/storage/postgres-domain-event-store.js';
+import { PostgresConversationOwnershipStore } from '../src/storage/postgres-conversation-ownership-store.js';
+import { PostgresOutboundAttributionStore } from '../src/storage/postgres-outbound-attribution-store.js';
 import { PostgresJobQueue } from '../src/jobs/postgres-job-queue.js';
 import { createDomainEvent } from '../src/domain/domain-event.js';
+import { createOutboundAttribution } from '../src/domain/outbound-attribution.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required for Postgres integration test');
@@ -14,7 +17,14 @@ const pool = new Pool({ connectionString, max: 8 });
 try {
   const applied = await runPostgresMigrations({ pool });
   assert.ok(Array.isArray(applied));
-  await pool.query('TRUNCATE TABLE durable_jobs, inbound_claims, domain_events RESTART IDENTITY');
+  await pool.query(`TRUNCATE TABLE
+    outbound_attributions,
+    conversation_ownership_transitions,
+    conversation_ownership,
+    durable_jobs,
+    inbound_claims,
+    domain_events
+    RESTART IDENTITY`);
 
   const claims = new PostgresClaimStore({ pool });
   assert.equal(await claims.claim('acme:wamid.1'), true);
@@ -46,6 +56,79 @@ try {
   assert.equal(persisted2.eventId, persisted1.eventId);
   assert.equal(persisted2.correlationId, persisted1.correlationId);
   assert.equal(persisted2.payload.text, 'Hello');
+
+  const ownership = new PostgresConversationOwnershipStore({ pool });
+  const ownershipDefault = await ownership.get('acme', 'whatsapp:20100');
+  assert.equal(ownershipDefault.state, 'AI_ACTIVE');
+  assert.equal(ownershipDefault.version, 0);
+
+  const takeover = await ownership.transition({
+    tenantId: 'acme',
+    conversationId: 'whatsapp:20100',
+    command: 'manual_takeover',
+    transitionId: 'takeover-1',
+    actor: 'operator:phone',
+    reasonCode: 'manual_outbound_observed',
+    expectedVersion: 0
+  });
+  assert.equal(takeover.state, 'HUMAN_ACTIVE');
+  assert.equal(takeover.version, 1);
+
+  const duplicateTakeover = await ownership.transition({
+    tenantId: 'acme',
+    conversationId: 'whatsapp:20100',
+    command: 'manual_takeover',
+    transitionId: 'takeover-1',
+    actor: 'operator:phone',
+    reasonCode: 'manual_outbound_observed',
+    expectedVersion: 0
+  });
+  assert.equal(duplicateTakeover.state, 'HUMAN_ACTIVE');
+  assert.equal(duplicateTakeover.version, 1);
+
+  const releasedOwnership = await ownership.transition({
+    tenantId: 'acme',
+    conversationId: 'whatsapp:20100',
+    command: 'release_to_agent',
+    transitionId: 'release-1',
+    actor: 'operator:management',
+    reasonCode: 'management_release',
+    expectedVersion: 1
+  });
+  assert.equal(releasedOwnership.state, 'AI_ACTIVE');
+  assert.equal(releasedOwnership.version, 2);
+
+  await assert.rejects(ownership.transition({
+    tenantId: 'acme',
+    conversationId: 'whatsapp:20100',
+    command: 'manual_takeover',
+    transitionId: 'stale-takeover',
+    actor: 'operator:old-tab',
+    reasonCode: 'stale',
+    expectedVersion: 1
+  }), /ownership_version_conflict/);
+
+  const attributions = new PostgresOutboundAttributionStore({ pool });
+  const agentAttribution = createOutboundAttribution({
+    tenantId: 'acme',
+    sessionId: 'acme-sales',
+    conversationId: 'whatsapp:20100',
+    customerId: '20100',
+    platformMessageId: 'out-agent-1',
+    origin: 'agent',
+    sourceMessageId: 'wamid.1'
+  });
+  const recordedAttribution = await attributions.record(agentAttribution);
+  assert.equal(recordedAttribution.origin, 'agent');
+
+  const duplicateAttribution = await attributions.record({ ...agentAttribution, origin: 'operator_api' });
+  assert.equal(duplicateAttribution.origin, 'agent');
+  const matchedAttribution = await attributions.findByPlatformMessageId('acme', 'acme-sales', 'out-agent-1');
+  assert.equal(matchedAttribution.origin, 'agent');
+  const consumedAttribution = await attributions.consumeEcho('acme', 'acme-sales', 'out-agent-1');
+  assert.ok(consumedAttribution.echoObservedAt);
+  const consumedAgain = await attributions.consumeEcho('acme', 'acme-sales', 'out-agent-1');
+  assert.equal(consumedAgain.echoObservedAt, consumedAttribution.echoObservedAt);
 
   const queueA = new PostgresJobQueue({ pool, ownerId: 'worker-a', leaseMs: 5_000, jitter: () => 0 });
   const queueB = new PostgresJobQueue({ pool, ownerId: 'worker-b', leaseMs: 5_000, jitter: () => 0 });

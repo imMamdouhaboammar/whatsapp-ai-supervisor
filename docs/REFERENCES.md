@@ -71,3 +71,63 @@ Reference for local authenticated browser state, operator visibility, and browse
 Repository: https://github.com/vercel-labs/agent-browser
 
 Used by the optional browser action worker. Relevant capabilities include isolated sessions, JSON output, content boundaries, domain restrictions, and Chrome or Lightpanda engines.
+
+## nanocoai/nanoclaw
+
+Repository: https://github.com/nanocoai/nanoclaw
+
+License: MIT
+
+Architecture reference only. Relevant ideas for the messaging-agent direction include channel adapters, direct WhatsApp connectivity through Baileys, QR/pairing authentication, routing a messaging group to an agent/session, host/agent isolation, and durable inbound/outbound boundaries.
+
+The proposed supervisor architecture intentionally keeps deterministic permission authority outside the agent runtime and uses different engagement semantics for an operator's business number.
+
+No source code was copied.
+
+## spinabot/brigade
+
+Repository: https://github.com/spinabot/brigade
+
+License: MIT
+
+Architecture reference only. Useful ideas include a long-running gateway, thin channel clients, one routing path for terminal and messaging inputs, origin-scoped long-term memory, approval-aware actions, and a mature Baileys WhatsApp connection with reconnect discipline, LID resolution, replies, media, presence, and read receipts.
+
+No source code was copied.
+
+## wangrongding/wechat-bot
+
+Repository: https://github.com/wangrongding/wechat-bot
+
+License: MIT
+
+Architecture reference only. The useful pattern is treating IM as an external communication channel and selecting the processing agent independently. It also demonstrates fast webhook acknowledgement and a runtime-shell approach where WeChat, Lark, Telegram, or WhatsApp feed the same agent/service abstraction.
+
+The supervisor does not adopt the single-turn `--no-session` default used by the Pi example. The target architecture requires durable conversation identity, contact context, ownership state, and policy evaluation across turns.
+
+No source code was copied.
+
+## WhiskeySockets/Baileys
+
+Repository: https://github.com/WhiskeySockets/Baileys
+
+License: MIT
+
+Candidate runtime dependency for a future linked-device v2 worker. Baileys connects directly to WhatsApp Web through WebSockets without Selenium or Chromium, supports normal Linked Devices QR/pairing authentication, multi-device events, replies, media, presence, read state, and persistent auth/key state.
+
+Baileys documentation explicitly treats its multi-file auth helper as an example/helper and recommends a proper SQL/NoSQL auth/key implementation for serious production use. The planned worker therefore keeps auth and Signal key persistence behind a durable encrypted provider rather than exposing library storage details to the supervisor core.
+
+Baileys is unofficial and is not affiliated with WhatsApp. Linked-device use remains opt-in and operationally isolated from the official Cloud API path.
+
+## OpenAI ChatGPT Workspace Agents
+
+Documentation: https://help.openai.com/en/articles/20001143
+
+Product/API behavior reference for the ChatGPT messaging-agent runtime. Workspace Agents can be triggered programmatically and can use tools, apps, custom MCPs, skills, and files. As documented on 2026-08-27, the API trigger queues the run and returns HTTP `202 Accepted` without a run ID or retrievable response.
+
+That asynchronous constraint is why the proposed integration uses an MCP callback tool such as `submit_decision` rather than pretending Workspace Agents are a synchronous model endpoint.
+
+## OpenAI custom MCP apps
+
+Documentation: https://help.openai.com/en/articles/12584461
+
+Product reference for exposing supervisor read/write tools to ChatGPT and Workspace Agents. Full MCP write/modify actions are available to supported managed ChatGPT workspaces, and private servers can be connected through supported secure tunneling rather than exposing the entire management surface publicly.

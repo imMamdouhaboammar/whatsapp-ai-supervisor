@@ -1,10 +1,29 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { api } from '../api/client';
-import type { Conversation, Tenant } from '../api/types';
+import type { Conversation, ConversationOwnershipState, Tenant } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { Status } from '../components/Status';
 import { formatDateTime, formatTime, percent } from '../app/format';
+
+function ownershipState(conversation: Conversation): ConversationOwnershipState {
+  return conversation.ownership?.state ?? (conversation.control === 'human' ? 'HUMAN_ACTIVE' : 'AI_ACTIVE');
+}
+
+function ownershipLabel(state: ConversationOwnershipState) {
+  if (state === 'AI_ACTIVE') return 'AI active';
+  if (state === 'HUMAN_ACTIVE') return 'Human active';
+  if (state === 'HUMAN_REQUESTED') return 'Human requested';
+  if (state === 'WAITING_APPROVAL') return 'Waiting approval';
+  return 'AI paused';
+}
+
+function ownershipToneValue(state: ConversationOwnershipState) {
+  if (state === 'AI_ACTIVE') return 'ai';
+  if (state === 'HUMAN_REQUESTED' || state === 'WAITING_APPROVAL') return 'requested';
+  if (state === 'AI_PAUSED') return 'degraded';
+  return 'human';
+}
 
 export function InboxPage({ refreshKey }: { refreshKey: number }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -44,6 +63,8 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
   }, [selectedId, conversations]);
 
   const selected = conversations.find((item) => item.customerId === selectedId) ?? null;
+  const selectedOwnership = selected ? ownershipState(selected) : null;
+  const humanActive = selectedOwnership === 'HUMAN_ACTIVE';
   const filtered = useMemo(() => conversations.filter((item) => {
     const haystack = `${item.customerName} ${item.customerId} ${item.preview}`.toLowerCase();
     return !query || haystack.includes(query.toLowerCase());
@@ -52,8 +73,12 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
   const setControl = async (mode: 'ai' | 'human') => {
     if (!selected) return;
     setBusy(true);
+    setError('');
     try {
-      await api.setConversationControl(tenantId, selected.customerId, mode);
+      await api.setConversationControl(tenantId, selected.customerId, mode, selected.ownership?.version);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
       await load();
     } finally { setBusy(false); }
   };
@@ -87,7 +112,7 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
 
   return <>
     <div className="page-header">
-      <div><h1 className="page-title">Inbox</h1><p className="page-description">Real conversation activity with explicit AI or human control.</p></div>
+      <div><h1 className="page-title">Inbox</h1><p className="page-description">Real conversation activity with explicit, versioned AI or human ownership.</p></div>
       <button className="button" disabled={busy} onClick={() => void handleModerate()}>
         <Icon name="smart" size={18} />
         {busy ? 'Moderating...' : '⚡ Moderate Active Chats'}
@@ -110,14 +135,14 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
         </div>
       </aside>
       <section className="thread">
-        {selected ? <>
+        {selected && selectedOwnership ? <>
           <header className="thread-head">
             <div><div className="thread-title">{selected.customerName}</div><div className="thread-sub mono">{selected.customerId}</div></div>
             <div className="filter-row">
-              <Status value={selected.control} label={selected.control === 'human' ? 'Human control' : 'AI control'} />
-              {selected.control === 'ai'
-                ? <button className="button tonal" disabled={busy} onClick={() => void setControl('human')}><Icon name="person" size={17} />Take over</button>
-                : <button className="button tonal" disabled={busy} onClick={() => void setControl('ai')}><Icon name="smart" size={17} />Return to AI</button>}
+              <Status value={ownershipToneValue(selectedOwnership)} label={ownershipLabel(selectedOwnership)} />
+              {humanActive
+                ? <button className="button tonal" disabled={busy} onClick={() => void setControl('ai')}><Icon name="smart" size={17} />Return to AI</button>
+                : <button className="button tonal" disabled={busy} onClick={() => void setControl('human')}><Icon name="person" size={17} />Take over</button>}
             </div>
           </header>
           <div className="thread-messages">
@@ -140,8 +165,8 @@ export function InboxPage({ refreshKey }: { refreshKey: number }) {
             <div ref={messagesEndRef} style={{ height: 1 }} />
           </div>
           <div className="composer">
-            <textarea className="text-input" disabled={selected.control !== 'human' || busy} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={selected.control === 'human' ? 'Reply as a human operator' : 'Take over the conversation to reply manually'} />
-            <button className="button" disabled={selected.control !== 'human' || !draft.trim() || busy} onClick={() => void send()}><Icon name="send" size={18} />Send</button>
+            <textarea className="text-input" disabled={!humanActive || busy} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={humanActive ? 'Reply as a human operator' : 'Take over the conversation to reply manually'} />
+            <button className="button" disabled={!humanActive || !draft.trim() || busy} onClick={() => void send()}><Icon name="send" size={18} />Send</button>
           </div>
         </> : <EmptyState title="Select a conversation" body="Choose a customer thread to inspect the messages and supervisor decisions." />}
       </section>
