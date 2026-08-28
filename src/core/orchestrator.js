@@ -17,9 +17,32 @@ function resolveExecutionMode(tenant, requestedMode = null) {
   return tenant.shadowMode ? 'shadow' : requested;
 }
 
+function legacyModelFromAgentDecision(decision) {
+  const model = {
+    intent: decision.intent,
+    confidence: decision.confidence,
+    reply: decision.proposedReply,
+    requestedAction: decision.requestedAction,
+    requestedControl: decision.requestedControl
+  };
+  if (decision.runtime?.provider) model.provider = decision.runtime.provider;
+  if (decision.runtime?.model) model.model = decision.runtime.model;
+  if (decision.requestedCapability) model.requestedCapability = decision.requestedCapability;
+  if (decision.conciseRationale) model.conciseRationale = decision.conciseRationale;
+  return model;
+}
+
+function ownershipVersion(value) {
+  const version = Number(value ?? 0);
+  if (!Number.isInteger(version) || version < 0) throw new Error('pending_agent_turn_ownership_version_invalid');
+  return version;
+}
+
 export class SupervisorOrchestrator {
   constructor({
-    modelGateway,
+    modelGateway = null,
+    agentRuntimeGateway = null,
+    pendingAgentTurnStore = null,
     channelSender,
     auditStore,
     actionGateway = null,
@@ -29,6 +52,8 @@ export class SupervisorOrchestrator {
     now = () => new Date().toISOString()
   }) {
     this.modelGateway = modelGateway;
+    this.agentRuntimeGateway = agentRuntimeGateway;
+    this.pendingAgentTurnStore = pendingAgentTurnStore;
     this.channelSender = channelSender;
     this.auditStore = auditStore;
     this.actionGateway = actionGateway;
@@ -87,19 +112,85 @@ export class SupervisorOrchestrator {
     }
   }
 
-  async handle(message, tenant, { executionMode = null } = {}) {
+  appendAudit({ tenant, message, model, permission, result }) {
+    this.auditStore.append({
+      id: crypto.randomUUID(),
+      tenantId: tenant.id,
+      messageId: message.id,
+      customerId: message.customerId,
+      channel: message.channel,
+      at: this.now(),
+      model,
+      permission,
+      result: {
+        action: result.action,
+        wouldAction: result.wouldAction ?? null,
+        reason: result.reason ?? null
+      }
+    });
+  }
+
+  async resolveModel(enrichedMessage, tenant, turnContext) {
+    const routingConfig = {
+      route: tenant.ai?.route ?? 'standard',
+      routes: tenant.ai?.routes ?? {},
+      businessContext: tenant.businessContext ?? null,
+      availableCapabilities: availableCapabilities(tenant.policy)
+    };
+
+    if (this.agentRuntimeGateway) {
+      const dispatch = await this.agentRuntimeGateway.dispatchTurn(
+        {
+          ...(turnContext?.turnId ? { turnId: turnContext.turnId } : {}),
+          message: enrichedMessage,
+          routingConfig
+        },
+        tenant.ai?.runtimeId ? { runtimeId: tenant.ai.runtimeId } : undefined
+      );
+      if (dispatch.status === 'dispatched') return { dispatch, model: null };
+      return { dispatch, model: legacyModelFromAgentDecision(dispatch.decision) };
+    }
+
+    if (!this.modelGateway?.decide) throw new Error('agent_runtime_gateway_or_model_gateway_required');
+    return {
+      dispatch: null,
+      model: await this.modelGateway.decide(enrichedMessage, routingConfig)
+    };
+  }
+
+  async handle(message, tenant, { executionMode = null, turnContext = null } = {}) {
     const resolvedExecutionMode = resolveExecutionMode(tenant, executionMode);
     const context = message.context && Array.isArray(message.context) && message.context.length > 0
       ? message.context
       : this.buildConversationContext(tenant.id, message.customerId);
 
     const enrichedMessage = { ...message, context };
-    const model = await this.modelGateway.decide(enrichedMessage, {
-      route: tenant.ai?.route ?? 'standard',
-      routes: tenant.ai?.routes ?? {},
-      businessContext: tenant.businessContext ?? null,
-      availableCapabilities: availableCapabilities(tenant.policy)
-    });
+    const { dispatch, model } = await this.resolveModel(enrichedMessage, tenant, turnContext);
+
+    if (dispatch?.status === 'dispatched') {
+      if (!this.pendingAgentTurnStore?.record) throw new Error('pending_agent_turn_store_required');
+      const pendingTurn = {
+        tenantId: tenant.id,
+        conversationId: turnContext?.conversationId ?? `${message.channel}:${message.customerId}`,
+        messageId: message.id,
+        turnId: dispatch.turnId,
+        runtimeId: dispatch.runtimeId,
+        dispatchedAt: dispatch.dispatchedAt,
+        expiresAt: dispatch.expiresAt,
+        status: 'pending',
+        ownershipVersion: ownershipVersion(turnContext?.ownershipVersion)
+      };
+      await this.pendingAgentTurnStore.record(pendingTurn);
+      const pendingResult = {
+        action: 'pending',
+        reason: 'agent_turn_dispatched',
+        model: null,
+        permission: null,
+        runtime: { runtimeId: dispatch.runtimeId, turnId: dispatch.turnId }
+      };
+      this.appendAudit({ tenant, message, model: null, permission: null, result: pendingResult });
+      return pendingResult;
+    }
 
     const permission = evaluatePermission(tenant.policy ?? {}, model, { channel: message.channel });
     let result;
@@ -140,22 +231,7 @@ export class SupervisorOrchestrator {
       result = { action: permission.action, model, permission };
     }
 
-    this.auditStore.append({
-      id: crypto.randomUUID(),
-      tenantId: tenant.id,
-      messageId: message.id,
-      customerId: message.customerId,
-      channel: message.channel,
-      at: this.now(),
-      model,
-      permission,
-      result: {
-        action: result.action,
-        wouldAction: result.wouldAction ?? null,
-        reason: result.reason ?? null
-      }
-    });
-
+    this.appendAudit({ tenant, message, model, permission, result });
     return result;
   }
 }
