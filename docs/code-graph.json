@@ -1,13 +1,13 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 84,
+  "moduleCount": 85,
   "edgeCount": 143,
   "cycles": [],
   "nodes": [
     {
       "id": "src/actions/action-gateway.js",
       "group": "action",
-      "lines": 25,
+      "lines": 60,
       "exports": [
         {
           "kind": "class",
@@ -21,6 +21,24 @@
       "external": [],
       "tests": [
         "tests/action-gateway.test.js"
+      ]
+    },
+    {
+      "id": "src/actions/tool-registry.js",
+      "group": "action",
+      "lines": 79,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "ToolRegistry"
+        }
+      ],
+      "imports": [],
+      "importedBy": [],
+      "external": [],
+      "tests": [
+        "tests/action-gateway.test.js",
+        "tests/tool-registry.test.js"
       ]
     },
     {
