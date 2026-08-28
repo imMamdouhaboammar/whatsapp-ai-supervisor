@@ -379,19 +379,19 @@ None.
 | `src/browser/worker-app.js` | http | 96 | 1 | 1 | `createBrowserWorkerServer` | `browser-worker.test.js` |
 | `src/browser/worker.js` | entry | 29 | 2 | 1 | — | — |
 | `src/channels/whatsapp-cloud.js` | channel | 87 | 0 | 2 | `normalizeWhatsAppWebhook`, `validateMetaSignature`, `verifyWebhookChallenge`, `WhatsAppCloudSender` | `whatsapp-cloud.test.js`, `whatsapp-sender-factory.test.js` |
-| `src/channels/whatsapp-linked-device.js` | channel | 149 | 0 | 6 | `whatsappTransportMode`, `normalizeLinkedDeviceInbound`, `normalizeLinkedDeviceOutboundObservation`, `WhatsAppLinkedDeviceSender` | `linked-device-channel.test.js`, `linked-device-outbound-normalization.test.js`, `linked-device-receipt.test.js`, `linked-device-send-operation.test.js`, `whatsapp-sender-factory.test.js` |
+| `src/channels/whatsapp-linked-device.js` | channel | 150 | 0 | 6 | `whatsappTransportMode`, `normalizeLinkedDeviceInbound`, `normalizeLinkedDeviceOutboundObservation`, `WhatsAppLinkedDeviceSender` | `linked-device-channel.test.js`, `linked-device-outbound-normalization.test.js`, `linked-device-receipt.test.js`, `linked-device-send-operation.test.js`, `phase1-review-regressions.test.js`, `whatsapp-sender-factory.test.js` |
 | `src/channels/whatsapp-sender-factory.js` | channel | 26 | 2 | 1 | `createWhatsAppSender` | `whatsapp-sender-factory.test.js` |
 | `src/cli.js` | entry | 79 | 4 | 0 | `main` | — |
 | `src/config.js` | runtime | 147 | 1 | 1 | `loadConfig`, `resolveTenantSecret` | `config-browser.test.js`, `postgres-runtime-wiring.test.js` |
 | `src/connectors/connector-state.js` | other | 83 | 0 | 1 | `CONNECTOR_STATES`, `normalizeLinkedDeviceConnectorState`, `configuredCloudConnectorState` | `connector-state.test.js` |
-| `src/core/audit-store.js` | decision | 16 | 0 | 0 | `InMemoryAuditStore` | `app.test.js`, `orchestrator-attribution.test.js`, `orchestrator-audit-reason.test.js`, `orchestrator.test.js` |
-| `src/core/conversation-ownership-store.js` | decision | 40 | 1 | 2 | `ownershipKey`, `assertOwnershipTransitionInput`, `defaultOwnershipFor`, `ConversationOwnershipStore` | — |
+| `src/core/audit-store.js` | decision | 16 | 0 | 0 | `InMemoryAuditStore` | `app.test.js`, `orchestrator-attribution.test.js`, `orchestrator-audit-reason.test.js`, `orchestrator.test.js`, `phase1-review-regressions.test.js` |
+| `src/core/conversation-ownership-store.js` | decision | 45 | 1 | 2 | `ownershipKey`, `assertOwnershipTransitionInput`, `defaultOwnershipFor`, `ConversationOwnershipStore` | — |
 | `src/core/file-audit-store.js` | decision | 49 | 0 | 1 | `FileAuditStore` | `file-stores.test.js` |
 | `src/core/file-claim-store.js` | decision | 41 | 0 | 1 | `FileClaimStore` | `file-stores.test.js` |
-| `src/core/file-conversation-ownership-store.js` | decision | 102 | 2 | 1 | `FileConversationOwnershipStore` | `file-conversation-ownership-store.test.js` |
+| `src/core/file-conversation-ownership-store.js` | decision | 133 | 2 | 1 | `FileConversationOwnershipStore` | `file-conversation-ownership-store.test.js`, `phase1-review-regressions.test.js` |
 | `src/core/file-conversation-store.js` | decision | 228 | 0 | 1 | `FileConversationStore` | `file-conversation-store.test.js`, `file-manual-outbound-idempotency.test.js` |
-| `src/core/file-outbound-attribution-store.js` | decision | 87 | 1 | 1 | `FileOutboundAttributionStore` | `file-outbound-attribution-store.test.js` |
-| `src/core/orchestrator.js` | decision | 155 | 2 | 1 | `SupervisorOrchestrator` | `orchestrator-attribution.test.js`, `orchestrator-audit-reason.test.js`, `orchestrator.test.js` |
+| `src/core/file-outbound-attribution-store.js` | decision | 141 | 1 | 1 | `FileOutboundAttributionStore` | `file-outbound-attribution-store.test.js`, `phase1-review-regressions.test.js` |
+| `src/core/orchestrator.js` | decision | 162 | 2 | 1 | `SupervisorOrchestrator` | `orchestrator-attribution.test.js`, `orchestrator-audit-reason.test.js`, `orchestrator.test.js`, `phase1-review-regressions.test.js` |
 | `src/core/tenant-store.js` | decision | 172 | 1 | 1 | `InMemoryTenantStore` | `tenant-store-crud.test.js`, `tenant-store-linked-device.test.js` |
 | `src/domain/conversation-ownership.js` | decision | 107 | 0 | 3 | `CONVERSATION_OWNERSHIP_STATES`, `CONVERSATION_OWNERSHIP_COMMANDS`, `assertConversationOwnership`, `createInitialOwnership`, `transitionOwnership` | `conversation-ownership.test.js` |
 | `src/domain/domain-event.js` | decision | 140 | 0 | 5 | `DOMAIN_EVENT_SCHEMA_VERSION`, `DOMAIN_ACTOR_TYPES`, `DOMAIN_EVENT_TYPES`, `assertDomainEvent`, `createDomainEvent`, `deriveDomainEvent` | `domain-event.test.js`, `messaging-agent-domain-events.test.js`, `postgres-domain-event-store.test.js`, `postgres-integration.mjs`, `realtime-domain-events.test.js` |
@@ -404,7 +404,7 @@ None.
 | `src/jobs/postgres-job-queue.js` | other | 159 | 0 | 1 | `PostgresJobQueue` | `postgres-durable-runtime.test.js`, `postgres-integration.mjs` |
 | `src/management/dashboard.js` | http | 90 | 1 | 1 | `sanitizeTenant`, `recentAuditEvents`, `buildOverview`, `buildActions` | `management-dashboard.test.js` |
 | `src/management/linked-device-status.js` | http | 155 | 2 | 1 | `createLinkedDeviceStatusProvider` | `connector-status-provider.test.js` |
-| `src/management/router.js` | http | 386 | 3 | 1 | `createManagementRouter` | `management-ownership-projection.test.js`, `management-ownership.test.js`, `management-router.test.js` |
+| `src/management/router.js` | http | 413 | 3 | 1 | `createManagementRouter` | `management-ownership-projection.test.js`, `management-ownership.test.js`, `management-router.test.js`, `phase1-review-regressions.test.js` |
 | `src/management/static-ui.js` | http | 59 | 0 | 1 | `serveStaticUi` | `static-ui.test.js` |
 | `src/realtime/sse-broadcaster.js` | runtime | 77 | 1 | 1 | `SseBroadcaster` | `realtime-domain-events.test.js`, `sse-broadcaster.test.js` |
 | `src/runtime/doctor.js` | runtime | 160 | 0 | 1 | `runDoctor` | `runtime-cli.test.js` |
@@ -414,7 +414,7 @@ None.
 | `src/runtime/tenant-runtime-cache.js` | runtime | 28 | 0 | 1 | `TenantRuntimeCache` | `tenant-runtime-cache.test.js` |
 | `src/server.js` | entry | 195 | 22 | 1 | — | — |
 | `src/storage/postgres-claim-store.js` | other | 26 | 0 | 1 | `PostgresClaimStore` | `postgres-durable-runtime.test.js`, `postgres-integration.mjs` |
-| `src/storage/postgres-conversation-ownership-store.js` | other | 170 | 2 | 1 | `PostgresConversationOwnershipStore` | `postgres-conversation-ownership-store.test.js`, `postgres-integration.mjs` |
+| `src/storage/postgres-conversation-ownership-store.js` | other | 194 | 2 | 1 | `PostgresConversationOwnershipStore` | `phase1-review-regressions.test.js`, `postgres-conversation-ownership-store.test.js`, `postgres-integration.mjs` |
 | `src/storage/postgres-domain-event-store.js` | other | 80 | 1 | 1 | `PostgresDomainEventStore` | `postgres-domain-event-store.test.js`, `postgres-integration.mjs` |
 | `src/storage/postgres-migrations.js` | other | 58 | 0 | 1 | `runPostgresMigrations` | `postgres-integration.mjs`, `postgres-runtime-wiring.test.js` |
 | `src/storage/postgres-outbound-attribution-store.js` | other | 96 | 1 | 1 | `PostgresOutboundAttributionStore` | `postgres-integration.mjs`, `postgres-outbound-attribution-store.test.js` |

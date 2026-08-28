@@ -65,7 +65,7 @@
 ### Task 3: PostgreSQL ownership persistence
 
 **Files:**
-- Create: `migrations/002_messaging_ownership.sql`
+- Create: `migrations/002_conversation_ownership.sql`
 - Create: `src/storage/postgres-conversation-ownership-store.js`
 - Test: `tests/postgres-conversation-ownership-store.test.js`
 - Modify: `tests/postgres-integration.mjs`
@@ -119,7 +119,7 @@
 - Create: `src/domain/outbound-attribution.js`
 - Create: `src/core/file-outbound-attribution-store.js`
 - Create: `src/storage/postgres-outbound-attribution-store.js`
-- Modify: `migrations/002_messaging_ownership.sql`
+- Modify: `migrations/002_conversation_ownership.sql`
 - Test: `tests/outbound-attribution.test.js`
 - Test: `tests/file-outbound-attribution-store.test.js`
 - Test: `tests/postgres-outbound-attribution-store.test.js`
