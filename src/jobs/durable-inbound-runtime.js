@@ -6,6 +6,7 @@ export function createInboundProcessingRuntime({
   orchestratorForTenant,
   auditStore,
   conversationStore = null,
+  ownershipStore = null,
   domainEventStore = null,
   sseBroadcaster = null,
   jobQueue = null,
@@ -15,6 +16,7 @@ export function createInboundProcessingRuntime({
     orchestratorForTenant,
     auditStore,
     conversationStore,
+    ownershipStore,
     domainEventStore,
     sseBroadcaster
   });

@@ -109,6 +109,13 @@ export class FileConversationStore {
   }
 
   recordManualOutbound({ tenantId, customerId, customerName = null, text, messageId = null, at = new Date().toISOString() }) {
+    if (messageId) {
+      const existing = this.readEvents(tenantId).find((event) =>
+        event.id === messageId && event.direction === 'operator'
+      );
+      if (existing) return existing;
+    }
+
     return this.appendEvent({
       id: messageId ?? crypto.randomUUID(),
       tenantId,

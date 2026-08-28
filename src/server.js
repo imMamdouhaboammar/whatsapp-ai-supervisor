@@ -79,7 +79,8 @@ function orchestratorForTenant(tenant) {
       channelSender: senderForTenant(tenant),
       auditStore,
       actionGateway,
-      conversationStore
+      conversationStore,
+      outboundAttributionStore: storageRuntime.outboundAttributionStore
     });
   });
 }
@@ -89,6 +90,7 @@ const inboundProcessing = createInboundProcessingRuntime({
   orchestratorForTenant,
   auditStore,
   conversationStore,
+  ownershipStore: storageRuntime.ownershipStore,
   domainEventStore: storageRuntime.domainEventStore,
   sseBroadcaster,
   jobQueue: storageRuntime.jobQueue
@@ -123,6 +125,9 @@ const managementRouter = createManagementRouter({
   tenantStore,
   auditStore,
   conversationStore,
+  ownershipStore: storageRuntime.ownershipStore,
+  outboundAttributionStore: storageRuntime.outboundAttributionStore,
+  domainEventStore: storageRuntime.domainEventStore,
   readiness,
   linkedDeviceStatus,
   manualSend: (tenant, message) => senderForTenant(tenant).sendText(message),
@@ -154,6 +159,8 @@ const server = createHttpServer({
   auditStore,
   claimStore: storageRuntime.claimStore,
   domainEventStore: storageRuntime.domainEventStore,
+  ownershipStore: storageRuntime.ownershipStore,
+  outboundAttributionStore: storageRuntime.outboundAttributionStore,
   jobQueue: storageRuntime.jobQueue,
   inboundDecisionHandler: inboundProcessing.decisionHandler,
   readiness,

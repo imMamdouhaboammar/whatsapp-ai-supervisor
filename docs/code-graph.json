@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 77,
-  "edgeCount": 129,
+  "moduleCount": 84,
+  "edgeCount": 143,
   "cycles": [],
   "nodes": [
     {
@@ -205,7 +205,7 @@
     {
       "id": "src/app.js",
       "group": "http",
-      "lines": 245,
+      "lines": 385,
       "exports": [
         {
           "kind": "function",
@@ -231,6 +231,8 @@
         "tests/app-domain-events.test.js",
         "tests/app-durable-domain-events.test.js",
         "tests/app-durable-queue.test.js",
+        "tests/app-linked-device-human-takeover.test.js",
+        "tests/app-linked-device-send-race.test.js",
         "tests/app-realtime-domain-events.test.js",
         "tests/app.test.js"
       ]
@@ -404,7 +406,7 @@
     {
       "id": "src/channels/whatsapp-linked-device.js",
       "group": "channel",
-      "lines": 89,
+      "lines": 150,
       "exports": [
         {
           "kind": "function",
@@ -413,6 +415,10 @@
         {
           "kind": "function",
           "name": "normalizeLinkedDeviceInbound"
+        },
+        {
+          "kind": "function",
+          "name": "normalizeLinkedDeviceOutboundObservation"
         },
         {
           "kind": "class",
@@ -428,9 +434,15 @@
         "src/management/dashboard.js",
         "src/management/linked-device-status.js"
       ],
-      "external": [],
+      "external": [
+        "node:crypto"
+      ],
       "tests": [
         "tests/linked-device-channel.test.js",
+        "tests/linked-device-outbound-normalization.test.js",
+        "tests/linked-device-receipt.test.js",
+        "tests/linked-device-send-operation.test.js",
+        "tests/phase1-review-regressions.test.js",
         "tests/whatsapp-sender-factory.test.js"
       ]
     },
@@ -550,9 +562,43 @@
       "external": [],
       "tests": [
         "tests/app.test.js",
+        "tests/orchestrator-attribution.test.js",
         "tests/orchestrator-audit-reason.test.js",
-        "tests/orchestrator.test.js"
+        "tests/orchestrator.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
+    },
+    {
+      "id": "src/core/conversation-ownership-store.js",
+      "group": "decision",
+      "lines": 45,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "ownershipKey"
+        },
+        {
+          "kind": "function",
+          "name": "assertOwnershipTransitionInput"
+        },
+        {
+          "kind": "function",
+          "name": "defaultOwnershipFor"
+        },
+        {
+          "kind": "class",
+          "name": "ConversationOwnershipStore"
+        }
+      ],
+      "imports": [
+        "src/domain/conversation-ownership.js"
+      ],
+      "importedBy": [
+        "src/core/file-conversation-ownership-store.js",
+        "src/storage/postgres-conversation-ownership-store.js"
+      ],
+      "external": [],
+      "tests": []
     },
     {
       "id": "src/core/file-audit-store.js",
@@ -601,9 +647,35 @@
       ]
     },
     {
+      "id": "src/core/file-conversation-ownership-store.js",
+      "group": "decision",
+      "lines": 133,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "FileConversationOwnershipStore"
+        }
+      ],
+      "imports": [
+        "src/core/conversation-ownership-store.js",
+        "src/domain/conversation-ownership.js"
+      ],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [
+        "node:fs",
+        "node:path"
+      ],
+      "tests": [
+        "tests/file-conversation-ownership-store.test.js",
+        "tests/phase1-review-regressions.test.js"
+      ]
+    },
+    {
       "id": "src/core/file-conversation-store.js",
       "group": "decision",
-      "lines": 221,
+      "lines": 228,
       "exports": [
         {
           "kind": "class",
@@ -619,13 +691,39 @@
         "node:path"
       ],
       "tests": [
-        "tests/file-conversation-store.test.js"
+        "tests/file-conversation-store.test.js",
+        "tests/file-manual-outbound-idempotency.test.js"
+      ]
+    },
+    {
+      "id": "src/core/file-outbound-attribution-store.js",
+      "group": "decision",
+      "lines": 141,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "FileOutboundAttributionStore"
+        }
+      ],
+      "imports": [
+        "src/domain/outbound-attribution.js"
+      ],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [
+        "node:fs",
+        "node:path"
+      ],
+      "tests": [
+        "tests/file-outbound-attribution-store.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
       "id": "src/core/orchestrator.js",
       "group": "decision",
-      "lines": 119,
+      "lines": 162,
       "exports": [
         {
           "kind": "class",
@@ -633,6 +731,7 @@
         }
       ],
       "imports": [
+        "src/domain/outbound-attribution.js",
         "src/domain/permission-engine.js"
       ],
       "importedBy": [
@@ -640,8 +739,10 @@
       ],
       "external": [],
       "tests": [
+        "tests/orchestrator-attribution.test.js",
         "tests/orchestrator-audit-reason.test.js",
-        "tests/orchestrator.test.js"
+        "tests/orchestrator.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
@@ -669,9 +770,46 @@
       ]
     },
     {
+      "id": "src/domain/conversation-ownership.js",
+      "group": "decision",
+      "lines": 107,
+      "exports": [
+        {
+          "kind": "const",
+          "name": "CONVERSATION_OWNERSHIP_STATES"
+        },
+        {
+          "kind": "const",
+          "name": "CONVERSATION_OWNERSHIP_COMMANDS"
+        },
+        {
+          "kind": "function",
+          "name": "assertConversationOwnership"
+        },
+        {
+          "kind": "function",
+          "name": "createInitialOwnership"
+        },
+        {
+          "kind": "function",
+          "name": "transitionOwnership"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/core/conversation-ownership-store.js",
+        "src/core/file-conversation-ownership-store.js",
+        "src/storage/postgres-conversation-ownership-store.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/conversation-ownership.test.js"
+      ]
+    },
+    {
       "id": "src/domain/domain-event.js",
       "group": "decision",
-      "lines": 136,
+      "lines": 140,
       "exports": [
         {
           "kind": "const",
@@ -702,6 +840,7 @@
       "importedBy": [
         "src/app.js",
         "src/jobs/inbound-decision-handler.js",
+        "src/management/router.js",
         "src/realtime/sse-broadcaster.js",
         "src/storage/postgres-domain-event-store.js"
       ],
@@ -710,9 +849,41 @@
       ],
       "tests": [
         "tests/domain-event.test.js",
+        "tests/messaging-agent-domain-events.test.js",
         "tests/postgres-domain-event-store.test.js",
         "tests/postgres-integration.mjs",
         "tests/realtime-domain-events.test.js"
+      ]
+    },
+    {
+      "id": "src/domain/outbound-attribution.js",
+      "group": "decision",
+      "lines": 61,
+      "exports": [
+        {
+          "kind": "const",
+          "name": "OUTBOUND_ORIGINS"
+        },
+        {
+          "kind": "function",
+          "name": "assertOutboundAttribution"
+        },
+        {
+          "kind": "function",
+          "name": "createOutboundAttribution"
+        }
+      ],
+      "imports": [],
+      "importedBy": [
+        "src/core/file-outbound-attribution-store.js",
+        "src/core/orchestrator.js",
+        "src/management/router.js",
+        "src/storage/postgres-outbound-attribution-store.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/outbound-attribution.test.js",
+        "tests/postgres-integration.mjs"
       ]
     },
     {
@@ -761,7 +932,7 @@
     {
       "id": "src/jobs/durable-inbound-runtime.js",
       "group": "other",
-      "lines": 32,
+      "lines": 34,
       "exports": [
         {
           "kind": "function",
@@ -777,7 +948,8 @@
       ],
       "external": [],
       "tests": [
-        "tests/durable-inbound-runtime.test.js"
+        "tests/durable-inbound-runtime.test.js",
+        "tests/durable-ownership-runtime.test.js"
       ]
     },
     {
@@ -802,7 +974,7 @@
     {
       "id": "src/jobs/inbound-decision-handler.js",
       "group": "other",
-      "lines": 89,
+      "lines": 114,
       "exports": [
         {
           "kind": "function",
@@ -822,7 +994,8 @@
       ],
       "external": [],
       "tests": [
-        "tests/inbound-decision-handler.test.js"
+        "tests/inbound-decision-handler.test.js",
+        "tests/inbound-ownership-gate.test.js"
       ]
     },
     {
@@ -903,7 +1076,7 @@
     {
       "id": "src/management/router.js",
       "group": "http",
-      "lines": 255,
+      "lines": 413,
       "exports": [
         {
           "kind": "function",
@@ -911,6 +1084,8 @@
         }
       ],
       "imports": [
+        "src/domain/domain-event.js",
+        "src/domain/outbound-attribution.js",
         "src/management/dashboard.js"
       ],
       "importedBy": [
@@ -920,7 +1095,10 @@
         "node:crypto"
       ],
       "tests": [
-        "tests/management-router.test.js"
+        "tests/management-ownership-projection.test.js",
+        "tests/management-ownership.test.js",
+        "tests/management-router.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
@@ -1085,7 +1263,7 @@
     {
       "id": "src/server.js",
       "group": "entry",
-      "lines": 188,
+      "lines": 195,
       "exports": [],
       "imports": [
         "src/actions/action-gateway.js",
@@ -1140,6 +1318,30 @@
       ]
     },
     {
+      "id": "src/storage/postgres-conversation-ownership-store.js",
+      "group": "other",
+      "lines": 194,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "PostgresConversationOwnershipStore"
+        }
+      ],
+      "imports": [
+        "src/core/conversation-ownership-store.js",
+        "src/domain/conversation-ownership.js"
+      ],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/phase1-review-regressions.test.js",
+        "tests/postgres-conversation-ownership-store.test.js",
+        "tests/postgres-integration.mjs"
+      ]
+    },
+    {
       "id": "src/storage/postgres-domain-event-store.js",
       "group": "other",
       "lines": 80,
@@ -1186,9 +1388,31 @@
       ]
     },
     {
+      "id": "src/storage/postgres-outbound-attribution-store.js",
+      "group": "other",
+      "lines": 96,
+      "exports": [
+        {
+          "kind": "class",
+          "name": "PostgresOutboundAttributionStore"
+        }
+      ],
+      "imports": [
+        "src/domain/outbound-attribution.js"
+      ],
+      "importedBy": [
+        "src/storage/storage-runtime.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/postgres-integration.mjs",
+        "tests/postgres-outbound-attribution-store.test.js"
+      ]
+    },
+    {
       "id": "src/storage/storage-runtime.js",
       "group": "other",
-      "lines": 73,
+      "lines": 81,
       "exports": [
         {
           "kind": "function",
@@ -1197,11 +1421,15 @@
       ],
       "imports": [
         "src/core/file-claim-store.js",
+        "src/core/file-conversation-ownership-store.js",
+        "src/core/file-outbound-attribution-store.js",
         "src/jobs/postgres-job-queue.js",
         "src/runtime/readiness.js",
         "src/storage/postgres-claim-store.js",
+        "src/storage/postgres-conversation-ownership-store.js",
         "src/storage/postgres-domain-event-store.js",
-        "src/storage/postgres-migrations.js"
+        "src/storage/postgres-migrations.js",
+        "src/storage/postgres-outbound-attribution-store.js"
       ],
       "importedBy": [
         "src/server.js"
@@ -1212,6 +1440,8 @@
         "pg"
       ],
       "tests": [
+        "tests/attribution-storage-runtime.test.js",
+        "tests/ownership-storage-runtime.test.js",
         "tests/postgres-runtime-wiring.test.js"
       ]
     },
@@ -1259,7 +1489,7 @@
     {
       "id": "workers/whatsapp-web/src/server.js",
       "group": "http",
-      "lines": 89,
+      "lines": 102,
       "exports": [
         {
           "kind": "function",
@@ -1281,7 +1511,7 @@
     {
       "id": "workers/whatsapp-web/src/session-manager.js",
       "group": "worker",
-      "lines": 294,
+      "lines": 388,
       "exports": [
         {
           "kind": "class",
@@ -1294,6 +1524,9 @@
       ],
       "external": [],
       "tests": [
+        "tests/whatsapp-web-human-outbound.test.js",
+        "tests/whatsapp-web-same-text-human-race.test.js",
+        "tests/whatsapp-web-send-echo-race.test.js",
         "tests/whatsapp-web-session-manager.test.js"
       ]
     },
@@ -1323,7 +1556,7 @@
     {
       "id": "ui/src/api/client.ts",
       "group": "ui",
-      "lines": 89,
+      "lines": 94,
       "exports": [
         {
           "kind": "function",
@@ -1360,7 +1593,7 @@
     {
       "id": "ui/src/api/types.ts",
       "group": "ui",
-      "lines": 149,
+      "lines": 162,
       "exports": [
         {
           "kind": "type",
@@ -1372,7 +1605,15 @@
         },
         {
           "kind": "type",
+          "name": "ConversationOwnershipState"
+        },
+        {
+          "kind": "type",
           "name": "ConnectorState"
+        },
+        {
+          "kind": "interface",
+          "name": "ConversationOwnership"
         },
         {
           "kind": "interface",
@@ -1786,7 +2027,7 @@
     {
       "id": "ui/src/pages/InboxPage.tsx",
       "group": "ui",
-      "lines": 151,
+      "lines": 176,
       "exports": [
         {
           "kind": "function",
@@ -2024,8 +2265,28 @@
       "to": "src/channels/whatsapp-linked-device.js"
     },
     {
+      "from": "src/core/conversation-ownership-store.js",
+      "to": "src/domain/conversation-ownership.js"
+    },
+    {
+      "from": "src/core/file-conversation-ownership-store.js",
+      "to": "src/domain/conversation-ownership.js"
+    },
+    {
+      "from": "src/core/file-conversation-ownership-store.js",
+      "to": "src/core/conversation-ownership-store.js"
+    },
+    {
+      "from": "src/core/file-outbound-attribution-store.js",
+      "to": "src/domain/outbound-attribution.js"
+    },
+    {
       "from": "src/core/orchestrator.js",
       "to": "src/domain/permission-engine.js"
+    },
+    {
+      "from": "src/core/orchestrator.js",
+      "to": "src/domain/outbound-attribution.js"
     },
     {
       "from": "src/core/tenant-store.js",
@@ -2058,6 +2319,14 @@
     {
       "from": "src/management/linked-device-status.js",
       "to": "src/connectors/connector-state.js"
+    },
+    {
+      "from": "src/management/router.js",
+      "to": "src/domain/domain-event.js"
+    },
+    {
+      "from": "src/management/router.js",
+      "to": "src/domain/outbound-attribution.js"
     },
     {
       "from": "src/management/router.js",
@@ -2156,12 +2425,32 @@
       "to": "src/realtime/sse-broadcaster.js"
     },
     {
+      "from": "src/storage/postgres-conversation-ownership-store.js",
+      "to": "src/domain/conversation-ownership.js"
+    },
+    {
+      "from": "src/storage/postgres-conversation-ownership-store.js",
+      "to": "src/core/conversation-ownership-store.js"
+    },
+    {
       "from": "src/storage/postgres-domain-event-store.js",
       "to": "src/domain/domain-event.js"
     },
     {
+      "from": "src/storage/postgres-outbound-attribution-store.js",
+      "to": "src/domain/outbound-attribution.js"
+    },
+    {
       "from": "src/storage/storage-runtime.js",
       "to": "src/core/file-claim-store.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/core/file-conversation-ownership-store.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/core/file-outbound-attribution-store.js"
     },
     {
       "from": "src/storage/storage-runtime.js",
@@ -2174,6 +2463,14 @@
     {
       "from": "src/storage/storage-runtime.js",
       "to": "src/storage/postgres-domain-event-store.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/storage/postgres-conversation-ownership-store.js"
+    },
+    {
+      "from": "src/storage/storage-runtime.js",
+      "to": "src/storage/postgres-outbound-attribution-store.js"
     },
     {
       "from": "src/storage/storage-runtime.js",

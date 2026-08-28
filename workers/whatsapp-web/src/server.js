@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -26,6 +26,12 @@ function authorized(req, authToken) {
   const actual = Buffer.from(String(req.headers.authorization ?? ''));
   const expected = Buffer.from(`Bearer ${authToken}`);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function operationIdFor(value) {
+  const operationId = String(value ?? '').trim() || randomUUID();
+  if (operationId.length > 200) throw new Error('invalid_send_payload');
+  return operationId;
 }
 
 function statusForError(error) {
@@ -71,8 +77,15 @@ export function createWhatsAppWebWorkerServer({ manager, authToken = null }) {
         const text = typeof body.text === 'string' ? body.text : '';
         if (!sessionId || !to || !text.trim()) return sendJson(res, 400, { error: 'invalid_send_payload' });
         try {
-          const result = await manager.sendText({ sessionId, to, text, replyToId: body.replyToId ?? null });
-          return sendJson(res, 200, result);
+          const operationId = operationIdFor(body.operationId);
+          const result = await manager.sendText({
+            sessionId,
+            to,
+            text,
+            replyToId: body.replyToId ?? null,
+            operationId
+          });
+          return sendJson(res, 200, { ...result, operationId: result?.operationId ?? operationId });
         } catch (error) {
           return sendJson(res, statusForError(error), { error: String(error?.message ?? error) });
         }

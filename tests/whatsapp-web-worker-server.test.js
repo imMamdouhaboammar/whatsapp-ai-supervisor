@@ -16,7 +16,7 @@ function manager() {
   return {
     listSessions() { return [{ sessionId: 'acme', status: 'ready', qr: null, pairingCode: null }]; },
     getSession(id) { return id === 'acme' ? { sessionId: 'acme', status: 'ready', qr: 'qr', pairingCode: 'code' } : null; },
-    async sendText(input) { return { id: `sent:${input.sessionId}:${input.to}` }; }
+    async sendText(input) { return { id: `sent:${input.sessionId}:${input.to}`, operationId: input.operationId }; }
   };
 }
 
@@ -41,18 +41,48 @@ test('worker health and sessions expose session status', async () => {
   });
 });
 
-test('worker send-text validates payload and calls session manager', async () => {
+test('worker send-text validates payload and forwards explicit operation identity', async () => {
   const calls = [];
   const m = manager();
-  m.sendText = async (input) => { calls.push(input); return { id: 'out-1' }; };
+  m.sendText = async (input) => { calls.push(input); return { id: 'out-1', operationId: input.operationId }; };
   await withServer(m, async (base) => {
     const response = await fetch(`${base}/v1/send-text`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'acme', to: '20100@c.us', text: 'hello', replyToId: 'ignored-v1' })
+      body: JSON.stringify({
+        sessionId: 'acme',
+        to: '20100@c.us',
+        text: 'hello',
+        replyToId: 'ignored-v1',
+        operationId: 'op-worker-1'
+      })
     });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { id: 'out-1' });
-    assert.deepEqual(calls[0], { sessionId: 'acme', to: '20100@c.us', text: 'hello', replyToId: 'ignored-v1' });
+    assert.deepEqual(await response.json(), { id: 'out-1', operationId: 'op-worker-1' });
+    assert.deepEqual(calls[0], {
+      sessionId: 'acme',
+      to: '20100@c.us',
+      text: 'hello',
+      replyToId: 'ignored-v1',
+      operationId: 'op-worker-1'
+    });
+  });
+});
+
+test('worker generates an operation identity for legacy send-text callers', async () => {
+  const calls = [];
+  const m = manager();
+  m.sendText = async (input) => { calls.push(input); return { id: 'out-legacy', operationId: input.operationId }; };
+  await withServer(m, async (base) => {
+    const response = await fetch(`${base}/v1/send-text`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'acme', to: '20100@c.us', text: 'hello' })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.id, 'out-legacy');
+    assert.equal(typeof body.operationId, 'string');
+    assert.ok(body.operationId.length > 0);
+    assert.equal(calls[0].operationId, body.operationId);
   });
 });
 
