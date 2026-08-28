@@ -34,6 +34,13 @@ function mapJsonRecord(value) {
   return Object.freeze(structuredClone(record));
 }
 
+function versionConflict(currentVersion = null) {
+  const error = new Error('ownership_version_conflict');
+  error.statusCode = 409;
+  if (currentVersion !== null) error.currentVersion = currentVersion;
+  return error;
+}
+
 export class PostgresConversationOwnershipStore {
   constructor({ pool, now = () => new Date().toISOString() }) {
     if (!pool?.query && !pool?.connect) throw new Error('PostgresConversationOwnershipStore pool is required');
@@ -49,6 +56,26 @@ export class PostgresConversationOwnershipStore {
       [tenantId, conversationId]
     );
     return result.rows[0] ? mapRow(result.rows[0]) : initial;
+  }
+
+  async getMany(tenantId, conversationIds) {
+    if (!Array.isArray(conversationIds)) throw new Error('ownership_conversation_ids_required');
+    const ids = conversationIds.map((conversationId) => String(conversationId ?? '').trim());
+    const defaults = ids.map((conversationId) =>
+      defaultOwnershipFor(tenantId, conversationId, { now: this.now, actor: 'supervisor' })
+    );
+    if (ids.length === 0) return [];
+
+    const result = await this.pool.query(
+      `SELECT * FROM conversation_ownership
+       WHERE tenant_id = $1 AND conversation_id = ANY($2::text[])`,
+      [tenantId, ids]
+    );
+    const byConversation = new Map(result.rows.map((row) => {
+      const record = mapRow(row);
+      return [record.conversationId, record];
+    }));
+    return ids.map((conversationId, index) => byConversation.get(conversationId) ?? defaults[index]);
   }
 
   async transition(input) {
@@ -98,10 +125,7 @@ export class PostgresConversationOwnershipStore {
       }
 
       if (input.expectedVersion !== undefined && input.expectedVersion !== null && Number(input.expectedVersion) !== current.version) {
-        const error = new Error('ownership_version_conflict');
-        error.statusCode = 409;
-        error.currentVersion = current.version;
-        throw error;
+        throw versionConflict(current.version);
       }
 
       const next = transitionOwnership(current, input.command, {
@@ -135,7 +159,7 @@ export class PostgresConversationOwnershipStore {
             current.version
           ]
         );
-        if (updateResult.rowCount !== 1) throw new Error('ownership_version_conflict');
+        if (updateResult.rowCount !== 1) throw versionConflict(current.version);
         persisted = mapRow(updateResult.rows[0]);
       }
 
