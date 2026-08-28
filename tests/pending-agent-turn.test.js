@@ -80,7 +80,11 @@ test('storage runtime exposes pending turns in file and postgres backends', asyn
   const fileRuntime = await mod.createStorageRuntime({ backend: 'file', dataDir });
   assert.equal(typeof fileRuntime.pendingAgentTurnStore?.record, 'function');
 
-  const pool = { async query() { return { rows: [] }; }, async end() {} };
+  const pool = {
+    async query() { return { rows: [] }; },
+    async connect() { return { async query() { return { rows: [] }; }, release() {} }; },
+    async end() {}
+  };
   const pgRuntime = await mod.createStorageRuntime({ backend: 'postgres', databaseUrl: 'postgres://test', poolMax: 1 }, {
     poolFactory: async () => pool,
     migrationRunner: async () => {}
