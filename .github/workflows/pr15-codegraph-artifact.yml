@@ -6,11 +6,10 @@ on:
       - feat/messaging-agent-runtime-gateway
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   generate:
-    if: github.event.head_commit.message != 'docs: regenerate code graph'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -19,13 +18,11 @@ jobs:
           node-version: 22
       - name: Generate code graph
         run: node tools/code-graph.mjs
-      - name: Commit generated graph
-        run: |
-          if git diff --quiet -- docs/CODE_GRAPH.md docs/code-graph.json; then
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/CODE_GRAPH.md docs/code-graph.json
-          git commit -m 'docs: regenerate code graph'
-          git push origin HEAD:${GITHUB_REF_NAME}
+      - name: Upload generated graph
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr15-codegraph
+          path: |
+            docs/CODE_GRAPH.md
+            docs/code-graph.json
+          if-no-files-found: error
