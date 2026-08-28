@@ -1,0 +1,28 @@
+name: pr15-codegraph-artifact
+
+on:
+  push:
+    branches:
+      - feat/messaging-agent-runtime-gateway
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Generate code graph
+        run: node tools/code-graph.mjs
+      - name: Upload generated graph
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr15-codegraph
+          path: |
+            docs/CODE_GRAPH.md
+            docs/code-graph.json
+          if-no-files-found: error
