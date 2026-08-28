@@ -136,10 +136,11 @@ export class WhatsAppLinkedDeviceSender {
     if (workerOperationId !== operationId) throw new Error('linked_device_operation_mismatch');
 
     const platformMessageId = String(body?.id ?? '').trim();
+    if (!platformMessageId) throw new Error('linked_device_message_id_missing');
     return {
       ...body,
-      id: platformMessageId || null,
-      platformMessageId: platformMessageId || null,
+      id: platformMessageId,
+      platformMessageId,
       operationId,
       transport: 'linked-device',
       sessionId: this.sessionId
