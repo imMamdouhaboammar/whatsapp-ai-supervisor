@@ -406,7 +406,7 @@
     {
       "id": "src/channels/whatsapp-linked-device.js",
       "group": "channel",
-      "lines": 149,
+      "lines": 150,
       "exports": [
         {
           "kind": "function",
@@ -442,6 +442,7 @@
         "tests/linked-device-outbound-normalization.test.js",
         "tests/linked-device-receipt.test.js",
         "tests/linked-device-send-operation.test.js",
+        "tests/phase1-review-regressions.test.js",
         "tests/whatsapp-sender-factory.test.js"
       ]
     },
@@ -563,13 +564,14 @@
         "tests/app.test.js",
         "tests/orchestrator-attribution.test.js",
         "tests/orchestrator-audit-reason.test.js",
-        "tests/orchestrator.test.js"
+        "tests/orchestrator.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
       "id": "src/core/conversation-ownership-store.js",
       "group": "decision",
-      "lines": 40,
+      "lines": 45,
       "exports": [
         {
           "kind": "function",
@@ -647,7 +649,7 @@
     {
       "id": "src/core/file-conversation-ownership-store.js",
       "group": "decision",
-      "lines": 102,
+      "lines": 133,
       "exports": [
         {
           "kind": "class",
@@ -666,7 +668,8 @@
         "node:path"
       ],
       "tests": [
-        "tests/file-conversation-ownership-store.test.js"
+        "tests/file-conversation-ownership-store.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
@@ -695,7 +698,7 @@
     {
       "id": "src/core/file-outbound-attribution-store.js",
       "group": "decision",
-      "lines": 87,
+      "lines": 141,
       "exports": [
         {
           "kind": "class",
@@ -713,13 +716,14 @@
         "node:path"
       ],
       "tests": [
-        "tests/file-outbound-attribution-store.test.js"
+        "tests/file-outbound-attribution-store.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
       "id": "src/core/orchestrator.js",
       "group": "decision",
-      "lines": 155,
+      "lines": 162,
       "exports": [
         {
           "kind": "class",
@@ -737,7 +741,8 @@
       "tests": [
         "tests/orchestrator-attribution.test.js",
         "tests/orchestrator-audit-reason.test.js",
-        "tests/orchestrator.test.js"
+        "tests/orchestrator.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
@@ -1071,7 +1076,7 @@
     {
       "id": "src/management/router.js",
       "group": "http",
-      "lines": 386,
+      "lines": 413,
       "exports": [
         {
           "kind": "function",
@@ -1092,7 +1097,8 @@
       "tests": [
         "tests/management-ownership-projection.test.js",
         "tests/management-ownership.test.js",
-        "tests/management-router.test.js"
+        "tests/management-router.test.js",
+        "tests/phase1-review-regressions.test.js"
       ]
     },
     {
@@ -1314,7 +1320,7 @@
     {
       "id": "src/storage/postgres-conversation-ownership-store.js",
       "group": "other",
-      "lines": 170,
+      "lines": 194,
       "exports": [
         {
           "kind": "class",
@@ -1330,6 +1336,7 @@
       ],
       "external": [],
       "tests": [
+        "tests/phase1-review-regressions.test.js",
         "tests/postgres-conversation-ownership-store.test.js",
         "tests/postgres-integration.mjs"
       ]

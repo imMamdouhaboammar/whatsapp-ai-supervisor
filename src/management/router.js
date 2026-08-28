@@ -137,7 +137,33 @@ async function transitionManagementOwnership({
 }
 
 async function projectOwnership(conversations, ownershipStore) {
-  if (!ownershipStore?.get) return conversations;
+  if (!ownershipStore?.get && !ownershipStore?.getMany) return conversations;
+  if (conversations.length === 0) return conversations;
+
+  if (typeof ownershipStore.getMany === 'function') {
+    const groups = new Map();
+    conversations.forEach((conversation, index) => {
+      const tenantId = String(conversation.tenantId);
+      const group = groups.get(tenantId) ?? [];
+      group.push({ index, conversationId: conversationIdFor(conversation.customerId) });
+      groups.set(tenantId, group);
+    });
+
+    const ownershipByIndex = new Map();
+    for (const [tenantId, group] of groups) {
+      const records = await ownershipStore.getMany(tenantId, group.map((entry) => entry.conversationId));
+      if (!Array.isArray(records) || records.length !== group.length) {
+        throw new Error('ownership_batch_result_invalid');
+      }
+      group.forEach((entry, index) => ownershipByIndex.set(entry.index, records[index]));
+    }
+
+    return conversations.map((conversation, index) => ({
+      ...conversation,
+      ownership: ownershipByIndex.get(index)
+    }));
+  }
+
   return Promise.all(conversations.map(async (conversation) => ({
     ...conversation,
     ownership: await ownershipStore.get(conversation.tenantId, conversationIdFor(conversation.customerId))
@@ -377,6 +403,7 @@ export function createManagementRouter({
       if (error instanceof SyntaxError) return sendJson(res, 400, { error: 'invalid_json' });
       if (error?.message === 'request_body_too_large') return sendJson(res, 413, { error: error.message });
       if (error?.message === 'invalid_conversation_control_mode') return sendJson(res, 400, { error: error.message });
+      if (error?.message === 'ownership_version_conflict') return sendJson(res, 409, { error: error.message });
       const statusCode = Number(error?.statusCode || error?.status) || 500;
       if (statusCode >= 500) return sendJson(res, 500, { error: 'management_internal_error' });
       return sendJson(res, statusCode, { error: error?.message || 'management_request_failed' });

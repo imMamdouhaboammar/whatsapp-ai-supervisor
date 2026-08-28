@@ -33,6 +33,11 @@ export class ConversationOwnershipStore {
     throw new Error('conversation_ownership_store_get_not_implemented');
   }
 
+  async getMany(tenantId, conversationIds) {
+    if (!Array.isArray(conversationIds)) throw new Error('ownership_conversation_ids_required');
+    return Promise.all(conversationIds.map((conversationId) => this.get(tenantId, conversationId)));
+  }
+
   async transition(_input) {
     throw new Error('conversation_ownership_store_transition_not_implemented');
   }

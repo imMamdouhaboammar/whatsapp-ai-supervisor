@@ -25,6 +25,7 @@ export class SupervisorOrchestrator {
     actionGateway = null,
     conversationStore = null,
     outboundAttributionStore = null,
+    logger = console,
     now = () => new Date().toISOString()
   }) {
     this.modelGateway = modelGateway;
@@ -33,6 +34,7 @@ export class SupervisorOrchestrator {
     this.actionGateway = actionGateway;
     this.conversationStore = conversationStore;
     this.outboundAttributionStore = outboundAttributionStore;
+    this.logger = logger;
     this.now = now;
   }
 
@@ -76,6 +78,11 @@ export class SupervisorOrchestrator {
       await this.outboundAttributionStore.record(attribution);
       return { recorded: true };
     } catch {
+      this.logger?.warn?.('outbound_attribution_failed', {
+        tenantId: tenant.id,
+        sessionId: outbound.sessionId,
+        platformMessageId: outbound.platformMessageId
+      });
       return { recorded: false, reason: 'attribution_failed' };
     }
   }
