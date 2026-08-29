@@ -9,3 +9,4 @@ config/tenants.json
 .wwebjs_cache
 .wwebjs_auth
 .DS_Store
+docs/code-graph.json
