@@ -1,13 +1,13 @@
 {
   "generatedBy": "tools/code-graph.mjs",
-  "moduleCount": 85,
-  "edgeCount": 143,
+  "moduleCount": 86,
+  "edgeCount": 145,
   "cycles": [],
   "nodes": [
     {
       "id": "src/actions/action-gateway.js",
       "group": "action",
-      "lines": 60,
+      "lines": 64,
       "exports": [
         {
           "kind": "class",
@@ -16,7 +16,7 @@
       ],
       "imports": [],
       "importedBy": [
-        "src/server.js"
+        "src/actions/production-tool-registry.js"
       ],
       "external": [],
       "tests": [
@@ -24,9 +24,35 @@
       ]
     },
     {
+      "id": "src/actions/production-tool-registry.js",
+      "group": "action",
+      "lines": 37,
+      "exports": [
+        {
+          "kind": "function",
+          "name": "createProductionToolRegistry"
+        },
+        {
+          "kind": "function",
+          "name": "createProductionActionGateway"
+        }
+      ],
+      "imports": [
+        "src/actions/action-gateway.js",
+        "src/actions/tool-registry.js"
+      ],
+      "importedBy": [
+        "src/server.js"
+      ],
+      "external": [],
+      "tests": [
+        "tests/production-tool-registry.test.js"
+      ]
+    },
+    {
       "id": "src/actions/tool-registry.js",
       "group": "action",
-      "lines": 79,
+      "lines": 103,
       "exports": [
         {
           "kind": "class",
@@ -34,7 +60,9 @@
         }
       ],
       "imports": [],
-      "importedBy": [],
+      "importedBy": [
+        "src/actions/production-tool-registry.js"
+      ],
       "external": [],
       "tests": [
         "tests/action-gateway.test.js",
@@ -258,7 +286,7 @@
     {
       "id": "src/browser/agent-browser-runtime.js",
       "group": "action",
-      "lines": 87,
+      "lines": 88,
       "exports": [
         {
           "kind": "class",
@@ -306,7 +334,7 @@
     {
       "id": "src/browser/remote-browser-runtime.js",
       "group": "action",
-      "lines": 61,
+      "lines": 63,
       "exports": [
         {
           "kind": "class",
@@ -1284,7 +1312,7 @@
       "lines": 195,
       "exports": [],
       "imports": [
-        "src/actions/action-gateway.js",
+        "src/actions/production-tool-registry.js",
         "src/ai/agentrouter-provider.js",
         "src/ai/anthropic-provider.js",
         "src/ai/model-gateway.js",
@@ -2183,6 +2211,14 @@
   ],
   "edges": [
     {
+      "from": "src/actions/production-tool-registry.js",
+      "to": "src/actions/action-gateway.js"
+    },
+    {
+      "from": "src/actions/production-tool-registry.js",
+      "to": "src/actions/tool-registry.js"
+    },
+    {
       "from": "src/ai/agentrouter-provider.js",
       "to": "src/ai/model-provider.js"
     },
@@ -2404,7 +2440,7 @@
     },
     {
       "from": "src/server.js",
-      "to": "src/actions/action-gateway.js"
+      "to": "src/actions/production-tool-registry.js"
     },
     {
       "from": "src/server.js",
