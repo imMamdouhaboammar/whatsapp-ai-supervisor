@@ -71,6 +71,56 @@ test('ActionGateway executes only the toolId attached to the matched policy rule
   });
 });
 
+test('ActionGateway normalizes policy tool ids before registry execution', async () => {
+  let receivedId = null;
+  const gateway = new ActionGateway({
+    toolRegistry: {
+      async execute(id) { receivedId = id; return { ok: true }; }
+    }
+  });
+
+  const result = await gateway.execute({
+    tenant: { id: 'tenant-a' },
+    message: { id: 'm1', customerId: '20100' },
+    rule: { capability: { toolId: ' orders.lookup ', parameters: {} } }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(receivedId, 'orders.lookup');
+});
+
+test('ActionGateway interpolates trusted ids literally instead of interpreting replacement tokens', async () => {
+  const calls = [];
+  const gateway = new ActionGateway({
+    toolRegistry: new ToolRegistry({
+      tools: [{ id: 'orders.lookup', type: 'business', async execute(input) { calls.push(input); return { ok: true }; } }]
+    })
+  });
+
+  await gateway.execute({
+    tenant: { id: '$&' },
+    message: { id: "$'", customerId: '$`', correlationId: '$$' },
+    rule: {
+      capability: {
+        toolId: 'orders.lookup',
+        parameters: {
+          tenant: '{{tenantId}}',
+          customer: '{{customerId}}',
+          message: '{{messageId}}',
+          correlation: '{{correlationId}}'
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(calls[0].parameters, {
+    tenant: '$&',
+    customer: '$`',
+    message: "$'",
+    correlation: '$$'
+  });
+});
+
 test('ActionGateway fails closed for unknown policy toolId without browser fallback', async () => {
   let browserCalls = 0;
   const gateway = new ActionGateway({
