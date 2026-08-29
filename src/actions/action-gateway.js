@@ -1,10 +1,11 @@
+/** Interpolate only policy-approved identifiers, inserting replacement values literally. */
 function interpolateTrustedValue(value, replacements) {
   if (typeof value === 'string') {
     return value
-      .replaceAll('{{tenantId}}', replacements.tenantId)
-      .replaceAll('{{customerId}}', replacements.customerId)
-      .replaceAll('{{messageId}}', replacements.messageId)
-      .replaceAll('{{correlationId}}', replacements.correlationId);
+      .replaceAll('{{tenantId}}', () => replacements.tenantId)
+      .replaceAll('{{customerId}}', () => replacements.customerId)
+      .replaceAll('{{messageId}}', () => replacements.messageId)
+      .replaceAll('{{correlationId}}', () => replacements.correlationId);
   }
   if (Array.isArray(value)) return value.map((item) => interpolateTrustedValue(item, replacements));
   if (value && typeof value === 'object') {
@@ -14,11 +15,13 @@ function interpolateTrustedValue(value, replacements) {
 }
 
 export class ActionGateway {
+  /** Bind browser and registered-tool execution adapters without changing policy authority. */
   constructor({ browserRuntime = null, toolRegistry = null } = {}) {
     this.browserRuntime = browserRuntime;
     this.toolRegistry = toolRegistry;
   }
 
+  /** Execute only the capability attached to the already-matched policy rule. */
   async execute({ tenant, message, rule }) {
     const capability = rule?.capability;
     if (!capability) throw new Error('action_capability_missing');
@@ -32,7 +35,8 @@ export class ActionGateway {
         correlationId: String(message.correlationId ?? '')
       };
       const parameters = interpolateTrustedValue(capability.parameters ?? {}, replacements);
-      return this.toolRegistry.execute(String(capability.toolId), {
+      const toolId = String(capability.toolId).trim();
+      return this.toolRegistry.execute(toolId, {
         tenantId: replacements.tenantId,
         customerId: replacements.customerId,
         messageId: replacements.messageId,
