@@ -50,7 +50,7 @@ export class AgentBrowserRuntime extends BrowserRuntime {
     }
   }
 
-  async runTask(input) {
+  async runTask(input, { signal = null } = {}) {
     const task = validateBrowserTask(input);
     const args = [
       '--json',
@@ -67,6 +67,7 @@ export class AgentBrowserRuntime extends BrowserRuntime {
         timeout: task.timeoutMs,
         windowsHide: true,
         shell: false,
+        signal: signal ?? undefined,
         maxBuffer: Math.max(this.maxOutput * 4, 1_000_000)
       });
       const output = parseOutput(stdout || stderr);
@@ -74,7 +75,7 @@ export class AgentBrowserRuntime extends BrowserRuntime {
       if (!ok) throw new Error(`browser_task_failed: ${output?.error ?? 'agent-browser returned failure'}`);
       return { ok: true, backend: 'agent-browser', engine: this.engine, output: output?.data ?? output };
     } catch (error) {
-      if (error?.killed || error?.signal === 'SIGTERM' || error?.code === 'ETIMEDOUT') {
+      if (error?.name === 'AbortError' || error?.killed || error?.signal === 'SIGTERM' || error?.code === 'ETIMEDOUT') {
         throw new Error('browser_task_timeout');
       }
       if (error?.code === 'ENOENT') throw new Error('browser_runtime_unavailable: agent-browser command not found');

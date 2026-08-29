@@ -11,7 +11,7 @@ import { AnthropicProvider } from './ai/anthropic-provider.js';
 import { AgentRouterProvider } from './ai/agentrouter-provider.js';
 import { createWhatsAppSender } from './channels/whatsapp-sender-factory.js';
 import { createBrowserRuntime } from './browser/runtime-factory.js';
-import { ActionGateway } from './actions/action-gateway.js';
+import { createProductionActionGateway } from './actions/production-tool-registry.js';
 import { collectReadiness } from './runtime/readiness.js';
 import { TenantRuntimeCache } from './runtime/tenant-runtime-cache.js';
 import { createDurableServiceLifecycle } from './runtime/durable-service-lifecycle.js';
@@ -30,7 +30,7 @@ const auditStore = new FileAuditStore({ dataDir: config.dataDir });
 const conversationStore = new FileConversationStore({ dataDir: config.dataDir });
 const storageRuntime = await createStorageRuntime({ ...config.storage, dataDir: config.dataDir });
 const browserRuntime = createBrowserRuntime(config.browser);
-const actionGateway = browserRuntime ? new ActionGateway({ browserRuntime }) : null;
+const actionGateway = createProductionActionGateway({ browserRuntime });
 const runtimeCache = new TenantRuntimeCache();
 
 function senderForTenant(tenant) {
