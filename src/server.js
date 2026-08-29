@@ -5,6 +5,8 @@ import { InMemoryTenantStore } from './core/tenant-store.js';
 import { FileAuditStore } from './core/file-audit-store.js';
 import { FileConversationStore } from './core/file-conversation-store.js';
 import { SupervisorOrchestrator } from './core/orchestrator.js';
+import { OpenAIResponsesAgentRuntime } from './agents/openai-responses-agent-runtime.js';
+import { AgentRuntimeGateway } from './agents/agent-runtime-gateway.js';
 import { ModelGateway } from './ai/model-gateway.js';
 import { OpenAIProvider } from './ai/openai-provider.js';
 import { AnthropicProvider } from './ai/anthropic-provider.js';
@@ -74,8 +76,17 @@ function buildModelProviders(tenant) {
 function orchestratorForTenant(tenant) {
   return runtimeCache.runtimeFor(tenant.id, () => {
     const modelGateway = new ModelGateway({ providers: buildModelProviders(tenant) });
+    const responsesRuntime = new OpenAIResponsesAgentRuntime({
+      runtimeId: 'openai-responses',
+      modelGateway
+    });
+    const agentRuntimeGateway = new AgentRuntimeGateway({
+      runtimes: [responsesRuntime],
+      defaultRuntimeId: 'openai-responses'
+    });
     return new SupervisorOrchestrator({
-      modelGateway,
+      agentRuntimeGateway,
+      pendingAgentTurnStore: storageRuntime.pendingAgentTurnStore,
       channelSender: senderForTenant(tenant),
       auditStore,
       actionGateway,
